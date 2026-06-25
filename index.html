@@ -1713,6 +1713,22 @@ function applyDaily(){
 }
 
 function renderTab_daily(){
+  // Auto-correct: if current range has no data (e.g. default "last 7 days" has no records),
+  // shift to the 7 most recent days that actually have data. Fixes blank Daily tab on fresh devices.
+  if(data.length){
+    const inRange = data.some(r=>r.date>=dailyStart && r.date<=dailyEnd);
+    if(!inRange){
+      const latestDate = data.map(r=>r.date).filter(Boolean).sort().pop();
+      if(latestDate){
+        dailyEnd   = latestDate;
+        dailyStart = addDays(latestDate, -6);
+        const s=document.getElementById('daily-start'), e=document.getElementById('daily-end');
+        if(s) s.value=dailyStart;
+        if(e) e.value=dailyEnd;
+      }
+    }
+  }
+
   const rangeRows = data.filter(r=>r.date>=dailyStart && r.date<=dailyEnd);
   const deptF = FS.daily.dept;
   const filteredRange = deptF==='all' ? rangeRows : rangeRows.filter(r=>getD(r.idx)===deptF);
@@ -1720,7 +1736,8 @@ function renderTab_daily(){
   // Build day cards FIRST so the browser paints them immediately
   const days=[];
   let d=dailyStart;
-  while(d<=dailyEnd){ days.push(d); d=addDays(d,1); }
+  let safetyCount=0;
+  while(d<=dailyEnd && safetyCount<60){ days.push(d); d=addDays(d,1); safetyCount++; }
   days.reverse();
 
   const grid = document.getElementById('daily-cards');
