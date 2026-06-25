@@ -685,6 +685,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   </div>
 
   <button id="backfillBtn" onclick="runBackfill()" title="Import all past changes into the Change Log" style="margin-top:14px;width:100%;background:none;border:1px dashed #d1d5db;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;color:#6b7280;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='none'">📋 Import Change History</button>
+  <button onclick="testLogSync()" title="Check whether the Change Log is loading correctly" style="margin-top:6px;width:100%;background:none;border:1px dashed #f59e0b;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;color:#f59e0b;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.background='#fffbeb'" onmouseout="this.style.background='none'">🔬 Test Note Sync</button>
 </aside>
 
 <!-- ── MAIN ── -->
@@ -3352,6 +3353,47 @@ function initTheme(){
   document.body.setAttribute('data-theme', saved);
   const btn = document.getElementById('themeBtn');
   if(btn) btn.innerHTML = saved === 'dark' ? '☀️ Light' : '🌙 Dark';
+}
+
+async function testLogSync(){
+  if(!APPS_SCRIPT_URL){ alert('❌ No Apps Script URL configured.'); return; }
+
+  const url = APPS_SCRIPT_URL + '?action=readLog&t=' + Date.now();
+  let raw_text = '', data = null, parseError = '';
+
+  try {
+    const res = await fetch(url, {cache:'no-store'});
+    raw_text  = await res.text();
+    try { data = JSON.parse(raw_text); } catch(e){ parseError = e.message; }
+  } catch(e) {
+    alert('❌ Fetch failed: ' + e.message
+      + '\n\nThis usually means the Apps Script URL is wrong or the deployment was not updated.');
+    return;
+  }
+
+  // Build summary
+  let msg = '';
+  if(parseError){
+    msg = '❌ Response is not valid JSON.\nProbably means Apps Script was NOT redeployed with the new code.'
+      + '\n\nRaw response (first 300 chars):\n' + raw_text.slice(0,300);
+  } else if(!Array.isArray(data)){
+    msg = '⚠️ Got a JSON object instead of an array — Apps Script may have the wrong code deployed.'
+      + '\n\nResponse:\n' + JSON.stringify(data).slice(0,300);
+  } else if(data.length === 0){
+    msg = '⚠️ Change Log is EMPTY (0 rows).\n\nNo one has written any notes yet — or the Change Log sheet exists but has no data rows.';
+  } else {
+    const first = data[0];
+    const last  = data[data.length-1];
+    const orders = [...new Set(data.map(r => String(r['Order Number']||'').trim()).filter(Boolean))];
+    msg = '✅ Change Log loaded: ' + data.length + ' entries across ' + orders.length + ' orders.'
+      + '\n\nFirst entry:\n  ' + JSON.stringify(first)
+      + '\n\nLast entry:\n  ' + JSON.stringify(last)
+      + '\n\nSample order numbers in log:\n  ' + orders.slice(0,5).join(', ')
+      + '\n\nSample order numbers in dashboard:\n  ' + raw.slice(0,5).map(r=>r.order).join(', ')
+      + '\n\nCurrent OVR_ACTIVITY entries: ' + Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length,0);
+  }
+
+  alert(msg);
 }
 
 async function runBackfill(){
