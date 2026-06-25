@@ -1243,40 +1243,33 @@ function setSyncStatus(msg, ok){
 // Builds OVR_ACTIVITY[idx] = array of activity strings for each order,
 // covering ALL teammates' notes even if they were overwritten in DashboardOverrides.
 async function loadChangeLog(){
-  if(!raw.length) return false;
+  if(!APPS_SCRIPT_URL || !raw.length) return false;
   try{
-    const url = `${PUBLISHED_SHEET_BASE}?gid=${CHANGELOG_PUB_GID}&single=true&output=csv&t=${Date.now()}`;
-    const res = await fetch(url, {cache:'no-store'});
-    const csvText = await res.text();
-    if(!csvText || csvText.length < 10 || csvText.trim().startsWith('<')) return false;
+    const url = APPS_SCRIPT_URL + '?action=readLog&t=' + Date.now();
+    const res  = await fetch(url, {cache:'no-store'});
+    const rows = await res.json();
+    if(!Array.isArray(rows) || !rows.length) return false;
 
-    const rows = parseCSV(csvText);
-    if(rows.length < 2) return false;
-
-    const hdrs = rows[0].map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
-    const iTs  = hdrs.findIndex(h=>h.includes('timestamp'));
-    const iWho = hdrs.findIndex(h=>h.includes('username'));
-    const iOrd = hdrs.findIndex(h=>h.includes('order'));
-    const iFld = hdrs.findIndex(h=>h.includes('field'));
-    const iVal = hdrs.findIndex(h=>h.includes('value'));
-    if(iOrd < 0) return false;
-
-    // Build order number → idx map (handles both "#11519" and "11519" formats)
+    // Build order number → idx map (handles "#11519" and "11519" formats)
     const o2i = {};
     raw.forEach((r,i)=>{
       if(!r.order) return;
       const k = String(r.order).trim();
       o2i[k] = i;
       o2i[k.replace(/^#/,'')] = i;
+      o2i['#'+k.replace(/^#/,'')] = i;
     });
 
     const byIdx = {};
-    rows.slice(1).forEach(cols=>{
-      const g = j => j>=0 ? (cols[j]||'').replace(/^"|"$/g,'').trim() : '';
-      const ts  = g(iTs); const who = g(iWho);
-      const ord = g(iOrd); const fld = g(iFld); const val = g(iVal);
+    rows.forEach(row=>{
+      const ts  = String(row['Timestamp']   || '').trim();
+      const who = String(row['Username']    || '').trim();
+      const ord = String(row['Order Number']|| '').trim();
+      const fld = String(row['Field']       || '').trim();
+      const val = String(row['New Value']   || '').trim();
       if(!ord) return;
-      const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord];
+
+      const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord.replace(/^#/,'')];
       if(idx === undefined) return;
 
       // Format timestamp
@@ -1289,10 +1282,9 @@ async function loadChangeLog(){
       // Format activity label
       let label = '';
       if(fld === 'Comment'){
-        // val is the accumulated comment string — extract the most recent segment
+        // val may be an accumulated string — take the last segment after " / "
         const parts = val.split(' / ');
         const last  = parts[parts.length-1].trim();
-        // If the segment already has "Name: ... · date" format, use as-is
         label = last.includes(' · ') ? last : (last + (dateStr ? ` · ${dateStr}` : ''));
       } else {
         label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
@@ -1303,7 +1295,7 @@ async function loadChangeLog(){
       byIdx[idx].push({ts, label});
     });
 
-    // Sort ascending, keep last 6 entries per order, detect changes
+    // Sort oldest→newest, keep last 6 per order, detect changes
     let changed = false;
     Object.keys(byIdx).forEach(idx=>{
       const sorted = byIdx[idx]
