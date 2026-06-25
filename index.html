@@ -636,6 +636,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <button class="hdr-icon-btn" onclick="setTab('today')" title="Go to Overview">🏠 Home</button>
     <button class="hdr-icon-btn" id="tab-trends" onclick="setTab('trends')" style="background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4);color:#93c5fd">📊 Trends</button>
     <button class="hdr-icon-btn" onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
+    <button class="hdr-icon-btn" onclick="runBackfill()" id="backfillBtn" title="Import all past changes into the Change Log" style="background:rgba(255,255,255,.08);font-size:11px">📋 Import History</button>
     <button class="hdr-icon-btn" onclick="changeName()" id="nameBtn" title="Change your name" style="background:rgba(255,255,255,.08);font-size:11px">👤 <span id="nameDisplay">Set name</span></button>
   </div>
 </header>
@@ -3121,6 +3122,25 @@ function initTheme(){
   document.body.setAttribute('data-theme', saved);
   const btn = document.getElementById('themeBtn');
   if(btn) btn.innerHTML = saved === 'dark' ? '☀️ Light' : '🌙 Dark';
+}
+
+async function runBackfill(){
+  if(!APPS_SCRIPT_URL) return;
+  const btn = document.getElementById('backfillBtn');
+  if(btn){ btn.textContent = '⏳ Importing…'; btn.disabled = true; }
+  try{
+    const res  = await fetch(APPS_SCRIPT_URL + '?action=backfill&t=' + Date.now());
+    const data = await res.json();
+    if(data.success){
+      alert('✅ Done! ' + data.imported + ' historical records added to the Change Log in Google Sheets.');
+    } else {
+      alert('Something went wrong: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e){
+    alert('Could not reach the server. Check your internet connection and try again.');
+  } finally {
+    if(btn){ btn.textContent = '📋 Import History'; btn.disabled = false; }
+  }
 }
 
 function updateNameDisplay(){
