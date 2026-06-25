@@ -1141,7 +1141,15 @@ function getC(i){ return OVR_C[i] ?? ''; }
 let OVR_CL = {};
 try { OVR_CL = JSON.parse(localStorage.getItem('ams_cl') || '{}'); } catch(e){}
 function saveCL(){ try{ localStorage.setItem('ams_cl', JSON.stringify(OVR_CL)); }catch(e){} }
-function getCL(i){ return OVR_CL[i] ?? []; }
+// Remote activity log — built from the Change Log sheet.
+// Includes every teammate's notes, never overwritten by concurrent writes.
+let OVR_ACTIVITY = {};
+
+function getCL(i){
+  // Prefer remote activity (all teammates) over local-only log
+  if(OVR_ACTIVITY[i] && OVR_ACTIVITY[i].length) return OVR_ACTIVITY[i];
+  return OVR_CL[i] ?? [];
+}
 
 // OVR_E: emailed status — keyed by order number string, value = timestamp string
 let OVR_E = {};
@@ -1193,10 +1201,14 @@ function pushOverride(orderNumber, field, value){
   _flushWrites();
 }
 
-// ── Direct Sheets CSV read — bypasses Apps Script caching entirely ──
-// Reads DashboardOverrides straight from the Google Sheet, same method
-// as the feedback CSV feed. No Apps Script involved = no cached responses.
-const OVERRIDES_SHEET_ID = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
+// ── Published sheet URLs — same mechanism as the feedback CSV ─────
+// Uses the spreadsheet's published key (not the edit key) so no auth needed.
+// Both DashboardOverrides and Change Log are in the same published workbook.
+const PUBLISHED_SHEET_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTOB_MFqtm-CJzEv9CS9Q5F89y10FseecQ36UmYzbjXp6jP4jVCc4aOX7Afhchpp_Tii5_wXUXeciT8/pub';
+const OVERRIDES_PUB_GID    = '459810229';
+const CHANGELOG_PUB_GID    = '2026260512';
+// Legacy — kept so any remaining references don't break
+const OVERRIDES_SHEET_ID   = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 
 function applyOverrideRows(rows){
   const orderToIdx = {};
@@ -1225,13 +1237,98 @@ function setSyncStatus(msg, ok){
   el.style.color = ok ? '#86efac' : '#fca5a5'; // bright green or red — always visible
 }
 
+// ── Change Log reader ──────────────────────────────────────────
+// Reads the Change Log sheet via published CSV URL (same mechanism as
+// the feedback CSV — no auth needed, always fresh).
+// Builds OVR_ACTIVITY[idx] = array of activity strings for each order,
+// covering ALL teammates' notes even if they were overwritten in DashboardOverrides.
+async function loadChangeLog(){
+  if(!raw.length) return false;
+  try{
+    const url = `${PUBLISHED_SHEET_BASE}?gid=${CHANGELOG_PUB_GID}&single=true&output=csv&t=${Date.now()}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const csvText = await res.text();
+    if(!csvText || csvText.length < 10 || csvText.trim().startsWith('<')) return false;
+
+    const rows = parseCSV(csvText);
+    if(rows.length < 2) return false;
+
+    const hdrs = rows[0].map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
+    const iTs  = hdrs.findIndex(h=>h.includes('timestamp'));
+    const iWho = hdrs.findIndex(h=>h.includes('username'));
+    const iOrd = hdrs.findIndex(h=>h.includes('order'));
+    const iFld = hdrs.findIndex(h=>h.includes('field'));
+    const iVal = hdrs.findIndex(h=>h.includes('value'));
+    if(iOrd < 0) return false;
+
+    // Build order number → idx map (handles both "#11519" and "11519" formats)
+    const o2i = {};
+    raw.forEach((r,i)=>{
+      if(!r.order) return;
+      const k = String(r.order).trim();
+      o2i[k] = i;
+      o2i[k.replace(/^#/,'')] = i;
+    });
+
+    const byIdx = {};
+    rows.slice(1).forEach(cols=>{
+      const g = j => j>=0 ? (cols[j]||'').replace(/^"|"$/g,'').trim() : '';
+      const ts  = g(iTs); const who = g(iWho);
+      const ord = g(iOrd); const fld = g(iFld); const val = g(iVal);
+      if(!ord) return;
+      const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord];
+      if(idx === undefined) return;
+
+      // Format timestamp
+      let dateStr = '';
+      if(ts){
+        try{ dateStr = new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+        catch(e){ dateStr = ts.slice(0,16); }
+      }
+
+      // Format activity label
+      let label = '';
+      if(fld === 'Comment'){
+        // val is the accumulated comment string — extract the most recent segment
+        const parts = val.split(' / ');
+        const last  = parts[parts.length-1].trim();
+        // If the segment already has "Name: ... · date" format, use as-is
+        label = last.includes(' · ') ? last : (last + (dateStr ? ` · ${dateStr}` : ''));
+      } else {
+        label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
+      }
+      if(!label) return;
+
+      if(!byIdx[idx]) byIdx[idx] = [];
+      byIdx[idx].push({ts, label});
+    });
+
+    // Sort ascending, keep last 6 entries per order, detect changes
+    let changed = false;
+    Object.keys(byIdx).forEach(idx=>{
+      const sorted = byIdx[idx]
+        .sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0)
+        .slice(-6)
+        .map(e=>e.label);
+      if(JSON.stringify(OVR_ACTIVITY[idx]||[]) !== JSON.stringify(sorted)){
+        OVR_ACTIVITY[idx] = sorted;
+        changed = true;
+      }
+    });
+    return changed;
+  } catch(e){
+    console.warn('[AMS] Change Log read failed:', e);
+    return false;
+  }
+}
+
 async function loadOverrides(){
   let changed = false;
 
-  // ── PRIMARY: Read directly from Google Sheets (bypasses Apps Script caching) ──
+  // ── PRIMARY: Read via published sheet URL (same auth mechanism as feedback CSV) ──
   try{
-    const directUrl = `https://docs.google.com/spreadsheets/d/${OVERRIDES_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DashboardOverrides&t=${Date.now()}`;
-    const res     = await fetch(directUrl, { cache: 'no-store' });
+    const pubUrl = `${PUBLISHED_SHEET_BASE}?gid=${OVERRIDES_PUB_GID}&single=true&output=csv&t=${Date.now()}`;
+    const res     = await fetch(pubUrl, { cache: 'no-store' });
     const csvText = await res.text();
     if(csvText && csvText.length > 10 && !csvText.trim().startsWith('<')){
       const csvRows = parseCSV(csvText);
@@ -1244,14 +1341,13 @@ async function loadOverrides(){
         }).filter(o=>o.OrderNumber);
         changed = applyOverrideRows(parsed);
         const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-        setSyncStatus(`synced ${t} · ${parsed.length} rows (direct)`, true);
+        setSyncStatus(`synced ${t} · ${parsed.length} rows (pub)`, true);
         return changed;
       }
     }
-    // Direct read returned no usable data — fall through to Apps Script
-    console.log('[AMS] Direct sheet read returned no data, falling back to Apps Script');
+    console.log('[AMS] Published URL returned no data, falling back to Apps Script');
   } catch(e){
-    console.log('[AMS] Direct read failed:', e.message);
+    console.log('[AMS] Published URL read failed:', e.message);
   }
 
   // ── FALLBACK: Apps Script ──
@@ -2992,13 +3088,14 @@ function showToast(msg, durationMs=3500){
 }
 
 // ── Background polling — keeps all teammates in sync ─────────
-// Polls every 10 s; re-fetches overrides and re-renders if new data found.
+// Polls every 10 s. Reads DashboardOverrides AND Change Log in parallel.
+// Change Log is the source of truth for who wrote what — never overwritten.
 async function syncAndRender(){
-  const changed = await loadOverrides();
+  const [ovChanged, clChanged] = await Promise.all([loadOverrides(), loadChangeLog()]);
   renderTabBadges();
-  if(changed){
+  if(ovChanged || clChanged){
     renderTab(currentTab);
-    showToast('↓ Team updates received');
+    if(clChanged) showToast('↓ Team updates received');
   } else {
     refreshOverridesInDOM();
   }
@@ -3342,7 +3439,7 @@ function changeName(){
   initTheme();
   const ok = await loadData();
   if(!ok) return;
-  await loadOverrides(); // pull shared overrides from Google Sheets (no-op if URL not set)
+  await Promise.all([loadOverrides(), loadChangeLog()]); // pull shared data from Google Sheets
   const _ov = document.getElementById('loading-overlay');
   if(_ov) _ov.style.display='none';
   if(!raw.length){
