@@ -1142,12 +1142,14 @@ function saveE(){ try{ localStorage.setItem('ams_e', JSON.stringify(OVR_E)); }ca
 // Falls back silently — local state is always updated first.
 function pushOverride(orderNumber, field, value){
   if(!APPS_SCRIPT_URL || !orderNumber) return;
+  const username = localStorage.getItem('ams_username') || 'Unknown';
   // Use GET with URL params to avoid CORS preflight issues with Apps Script
   const url = APPS_SCRIPT_URL
     + '?action=write'
     + '&orderNumber=' + encodeURIComponent(orderNumber)
     + '&field='       + encodeURIComponent(field)
-    + '&value='       + encodeURIComponent(value);
+    + '&value='       + encodeURIComponent(value)
+    + '&username='    + encodeURIComponent(username);
   fetch(url).catch(e=> console.warn('[AMS] Override sync failed:', e));
 }
 
