@@ -629,6 +629,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   <div class="hdr-title-btn" onclick="setTab('today')">
     <div class="hdr-title">AMS Feedback Dashboard</div>
     <div class="hdr-meta" id="hdrMeta">Loading…</div>
+    <div id="syncStatus" style="font-size:10px;color:rgba(255,255,255,.35);margin-top:1px">⏳ syncing…</div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <div class="hdr-pill" id="hdrPill" style="display:none" onclick="urgentPillClick()" title="View all Urgent items">⚠️ <span id="hdrPillN">0</span> Urgent</div>
@@ -1168,31 +1169,36 @@ const OVERRIDES_SHEET_ID = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 function applyOverrideRows(rows){
   const orderToIdx = {};
   raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
+  let changed = false;
   rows.forEach(ov=>{
     const orderKey = String(ov.OrderNumber||'').trim();
     const idx = orderToIdx[orderKey];
     if(idx !== undefined){
-      if(ov.P) OVR_P[idx] = ov.P;
-      if(ov.S) OVR_S[idx] = ov.S;
-      if(ov.A) OVR_A[idx] = ov.A;
-      if(ov.D) OVR_D[idx] = ov.D;
-      if(ov.C) OVR_C[idx] = ov.C;
+      if(ov.P && OVR_P[idx] !== ov.P){ OVR_P[idx] = ov.P; changed = true; }
+      if(ov.S && OVR_S[idx] !== ov.S){ OVR_S[idx] = ov.S; changed = true; }
+      if(ov.A && OVR_A[idx] !== ov.A){ OVR_A[idx] = ov.A; changed = true; }
+      if(ov.D && OVR_D[idx] !== ov.D){ OVR_D[idx] = ov.D; changed = true; }
+      if(ov.C && OVR_C[idx] !== ov.C){ OVR_C[idx] = ov.C; changed = true; }
     }
-    if(ov.Emailed) OVR_E[orderKey] = ov.Emailed;
+    if(ov.Emailed && OVR_E[orderKey] !== ov.Emailed){ OVR_E[orderKey] = ov.Emailed; changed = true; }
   });
   saveP(); saveS(); saveA(); saveD(); saveC(); saveE(); saveCL();
+  return changed;
+}
+
+function setSyncStatus(msg, ok){
+  const el = document.getElementById('syncStatus');
+  if(el) el.textContent = (ok ? '✅' : '⚠️') + ' ' + msg;
 }
 
 async function loadOverrides(){
-  const orderToIdx = {};
-  raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
+  let changed = false;
 
-  // ── PRIMARY: Read directly from Google Sheets (no Apps Script, no caching) ──
+  // ── PRIMARY: Read directly from Google Sheets (bypasses Apps Script caching) ──
   try{
     const directUrl = `https://docs.google.com/spreadsheets/d/${OVERRIDES_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DashboardOverrides&t=${Date.now()}`;
     const res     = await fetch(directUrl, { cache: 'no-store' });
     const csvText = await res.text();
-    // If we got actual CSV data (not a login redirect page)
     if(csvText && csvText.length > 10 && !csvText.trim().startsWith('<')){
       const csvRows = parseCSV(csvText);
       if(csvRows.length > 1){
@@ -1202,25 +1208,32 @@ async function loadOverrides(){
           hdrs.forEach((h,i)=>{ obj[h]=(cols[i]||'').replace(/^"|"$/g,'').trim(); });
           return obj;
         }).filter(o=>o.OrderNumber);
-        applyOverrideRows(parsed);
-        console.log('[AMS] Overrides loaded directly from Sheets:', parsed.length, 'rows');
-        return; // success — skip fallback
+        changed = applyOverrideRows(parsed);
+        const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        setSyncStatus(`synced ${t} · ${parsed.length} rows (direct)`, true);
+        return changed;
       }
     }
+    // Direct read returned no usable data — fall through to Apps Script
+    console.log('[AMS] Direct sheet read returned no data, falling back to Apps Script');
   } catch(e){
-    console.log('[AMS] Direct sheet read failed, trying Apps Script fallback:', e.message);
+    console.log('[AMS] Direct read failed:', e.message);
   }
 
-  // ── FALLBACK: Apps Script (used only if direct read above fails) ──
-  if(!APPS_SCRIPT_URL) return;
+  // ── FALLBACK: Apps Script ──
+  if(!APPS_SCRIPT_URL){ setSyncStatus('no URL configured', false); return false; }
   try{
     const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now(), { cache: 'no-store' });
     const rows = await res.json();
-    if(!Array.isArray(rows)) return;
-    applyOverrideRows(rows);
-    console.log('[AMS] Overrides loaded via Apps Script fallback:', rows.length, 'rows');
+    if(!Array.isArray(rows)){ setSyncStatus('bad response from Apps Script', false); return false; }
+    changed = applyOverrideRows(rows);
+    const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    setSyncStatus(`synced ${t} · ${rows.length} rows (script)`, true);
+    return changed;
   } catch(e){
+    setSyncStatus('sync failed — check connection', false);
     console.warn('[AMS] Could not load overrides:', e);
+    return false;
   }
 }
 function getP(i){ return OVR_P[i] ?? P_DEFAULT[raw[i].action] ?? 'Low'; }
@@ -2932,20 +2945,24 @@ function unmarkEmailed(idx){
 // ── Background polling — keeps all teammates in sync ─────────
 // Every 20 s: silently re-fetch overrides (including emailed status)
 // and re-render the current tab so buttons + counts stay current.
-// Poll every 10 seconds — direct Sheets read is fast enough to support this
-setInterval(async ()=>{
-  await loadOverrides();
+async function syncAndRender(){
+  const changed = await loadOverrides();
   renderTabBadges();
-  refreshOverridesInDOM();
-}, 10000);
-
-// Also refresh the moment anyone switches back to this tab
-document.addEventListener('visibilitychange', async ()=>{
-  if(document.visibilityState === 'visible'){
-    await loadOverrides();
-    renderTabBadges();
+  if(changed){
+    // New data arrived — full re-render so every row is updated,
+    // even if it wasn't in the DOM before (different filter/tab/date)
+    renderTab(currentTab);
+  } else {
     refreshOverridesInDOM();
   }
+}
+
+// Poll every 10 seconds
+setInterval(syncAndRender, 10000);
+
+// Also sync immediately when user comes back to this tab
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible') syncAndRender();
 });
 // Paste your deployed Apps Script URL here (see 2026-06-20-google-apps-script.js for setup)
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnWMWGdOU72HJ8cE16NLIzAmzqw-QSZFFocolK_5Yatuy-rp8oQPQEMCh9DJ2ysNSbBA/exec';
