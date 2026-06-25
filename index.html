@@ -1239,78 +1239,120 @@ function setSyncStatus(msg, ok){
 }
 
 // ── Change Log reader ──────────────────────────────────────────
-// Reads the Change Log sheet via published CSV URL (same mechanism as
-// the feedback CSV — no auth needed, always fresh).
-// Builds OVR_ACTIVITY[idx] = array of activity strings for each order,
-// covering ALL teammates' notes even if they were overwritten in DashboardOverrides.
+// Tries published CSV first (no Apps Script needed), then falls back
+// to Apps Script ?action=readLog. Builds OVR_ACTIVITY[idx] for every order
+// so ALL teammates' notes are visible, never last-writer-wins.
+
+// Shared helper: given an array of Change Log row objects, apply to OVR_ACTIVITY
+function applyChangeLogRows(rows){
+  // Must have Timestamp + Order Number columns to be real Change Log data
+  // (DashboardOverrides fallthrough has OrderNumber/P/S/A/D instead)
+  if(!rows.length) return false;
+  const sample = rows[0];
+  const isRealLog = sample.hasOwnProperty('Timestamp') || sample.hasOwnProperty('Order Number');
+  const isOverrideData = sample.hasOwnProperty('OrderNumber') && !sample.hasOwnProperty('Timestamp');
+  if(isOverrideData || !isRealLog) return false; // wrong data source
+
+  // Build order number → idx map (handles "#11519" and "11519" formats)
+  const o2i = {};
+  raw.forEach((r,i)=>{
+    if(!r.order) return;
+    const k = String(r.order).trim();
+    o2i[k] = i;
+    o2i[k.replace(/^#/,'')] = i;
+    o2i['#'+k.replace(/^#/,'')] = i;
+  });
+
+  const byIdx = {};
+  rows.forEach(row=>{
+    const ts  = String(row['Timestamp']   || '').trim();
+    const who = String(row['Username']    || '').trim();
+    const ord = String(row['Order Number']|| '').trim();
+    const fld = String(row['Field']       || '').trim();
+    const val = String(row['New Value']   || '').trim();
+    if(!ord) return;
+
+    const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord.replace(/^#/,'')];
+    if(idx === undefined) return;
+
+    // Format timestamp
+    let dateStr = '';
+    if(ts){
+      try{ dateStr = new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+      catch(e){ dateStr = ts.slice(0,16); }
+    }
+
+    // Format activity label
+    let label = '';
+    if(fld === 'Comment'){
+      // val may be an accumulated string — take the last segment after " / "
+      const parts = val.split(' / ');
+      const last  = parts[parts.length-1].trim();
+      label = last.includes(' · ') ? last : (last + (dateStr ? ` · ${dateStr}` : ''));
+    } else {
+      label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
+    }
+    if(!label) return;
+
+    if(!byIdx[idx]) byIdx[idx] = [];
+    byIdx[idx].push({ts, label});
+  });
+
+  // Sort oldest→newest, keep last 6 per order, detect changes
+  let changed = false;
+  Object.keys(byIdx).forEach(idx=>{
+    const sorted = byIdx[idx]
+      .sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0)
+      .slice(-6)
+      .map(e=>e.label);
+    if(JSON.stringify(OVR_ACTIVITY[idx]||[]) !== JSON.stringify(sorted)){
+      OVR_ACTIVITY[idx] = sorted;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 async function loadChangeLog(){
-  if(!APPS_SCRIPT_URL || !raw.length) return false;
+  if(!raw.length) return false;
+
+  // ── PRIMARY: Published CSV (works without Apps Script changes) ──────
+  // Requires the "Change Log" tab to be published to web in Google Sheets:
+  //   File → Share → Publish to web → Select "Change Log" tab → CSV → Publish
   try{
-    const url = APPS_SCRIPT_URL + '?action=readLog&t=' + Date.now();
+    const pubUrl = `${PUBLISHED_SHEET_BASE}?gid=${CHANGELOG_PUB_GID}&single=true&output=csv&t=${Date.now()}`;
+    const res     = await fetch(pubUrl, {cache:'no-store'});
+    const csvText = await res.text();
+    if(csvText && csvText.length > 10 && !csvText.trim().startsWith('<')){
+      const csvRows = parseCSV(csvText);
+      if(csvRows.length > 1){
+        const hdrs = csvRows[0].map(h=>h.replace(/^"|"$/g,'').trim());
+        const rows = csvRows.slice(1).map(cols=>{
+          const obj={};
+          hdrs.forEach((h,i)=>{ obj[h]=(cols[i]||'').replace(/^"|"$/g,'').trim(); });
+          return obj;
+        });
+        const result = applyChangeLogRows(rows);
+        if(result !== false){
+          console.log('[AMS] Change Log loaded via published CSV:', rows.length, 'rows');
+          return result;
+        }
+      }
+    }
+  } catch(e){ console.log('[AMS] Change Log published URL failed:', e.message); }
+
+  // ── FALLBACK: Apps Script ?action=readLog ────────────────────────────
+  if(!APPS_SCRIPT_URL) return false;
+  try{
+    const url  = APPS_SCRIPT_URL + '?action=readLog&t=' + Date.now();
     const res  = await fetch(url, {cache:'no-store'});
     const rows = await res.json();
     if(!Array.isArray(rows) || !rows.length) return false;
-
-    // Build order number → idx map (handles "#11519" and "11519" formats)
-    const o2i = {};
-    raw.forEach((r,i)=>{
-      if(!r.order) return;
-      const k = String(r.order).trim();
-      o2i[k] = i;
-      o2i[k.replace(/^#/,'')] = i;
-      o2i['#'+k.replace(/^#/,'')] = i;
-    });
-
-    const byIdx = {};
-    rows.forEach(row=>{
-      const ts  = String(row['Timestamp']   || '').trim();
-      const who = String(row['Username']    || '').trim();
-      const ord = String(row['Order Number']|| '').trim();
-      const fld = String(row['Field']       || '').trim();
-      const val = String(row['New Value']   || '').trim();
-      if(!ord) return;
-
-      const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord.replace(/^#/,'')];
-      if(idx === undefined) return;
-
-      // Format timestamp
-      let dateStr = '';
-      if(ts){
-        try{ dateStr = new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
-        catch(e){ dateStr = ts.slice(0,16); }
-      }
-
-      // Format activity label
-      let label = '';
-      if(fld === 'Comment'){
-        // val may be an accumulated string — take the last segment after " / "
-        const parts = val.split(' / ');
-        const last  = parts[parts.length-1].trim();
-        label = last.includes(' · ') ? last : (last + (dateStr ? ` · ${dateStr}` : ''));
-      } else {
-        label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
-      }
-      if(!label) return;
-
-      if(!byIdx[idx]) byIdx[idx] = [];
-      byIdx[idx].push({ts, label});
-    });
-
-    // Sort oldest→newest, keep last 6 per order, detect changes
-    let changed = false;
-    Object.keys(byIdx).forEach(idx=>{
-      const sorted = byIdx[idx]
-        .sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0)
-        .slice(-6)
-        .map(e=>e.label);
-      if(JSON.stringify(OVR_ACTIVITY[idx]||[]) !== JSON.stringify(sorted)){
-        OVR_ACTIVITY[idx] = sorted;
-        changed = true;
-      }
-    });
-    return changed;
+    const result = applyChangeLogRows(rows);
+    if(result !== false) console.log('[AMS] Change Log loaded via Apps Script:', rows.length, 'rows');
+    return result === false ? false : result;
   } catch(e){
-    console.warn('[AMS] Change Log read failed:', e);
+    console.warn('[AMS] Change Log Apps Script read failed:', e);
     return false;
   }
 }
@@ -3380,17 +3422,29 @@ async function testLogSync(){
     msg = '⚠️ Got a JSON object instead of an array — Apps Script may have the wrong code deployed.'
       + '\n\nResponse:\n' + JSON.stringify(data).slice(0,300);
   } else if(data.length === 0){
-    msg = '⚠️ Change Log is EMPTY (0 rows).\n\nNo one has written any notes yet — or the Change Log sheet exists but has no data rows.';
+    msg = '⚠️ Change Log is EMPTY (0 rows).\n\nThis means either:\n'
+      + '1. The Change Log tab has not been published to web yet (most likely)\n'
+      + '2. No one has written notes yet\n\n'
+      + 'Fix: In Google Sheets → File → Share → Publish to web → select "Change Log" tab → CSV → Publish';
   } else {
     const first = data[0];
-    const last  = data[data.length-1];
-    const orders = [...new Set(data.map(r => String(r['Order Number']||'').trim()).filter(Boolean))];
-    msg = '✅ Change Log loaded: ' + data.length + ' entries across ' + orders.length + ' orders.'
-      + '\n\nFirst entry:\n  ' + JSON.stringify(first)
-      + '\n\nLast entry:\n  ' + JSON.stringify(last)
-      + '\n\nSample order numbers in log:\n  ' + orders.slice(0,5).join(', ')
-      + '\n\nSample order numbers in dashboard:\n  ' + raw.slice(0,5).map(r=>r.order).join(', ')
-      + '\n\nCurrent OVR_ACTIVITY entries: ' + Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length,0);
+    const isOverrideData = first.hasOwnProperty('OrderNumber') && !first.hasOwnProperty('Timestamp');
+    if(isOverrideData){
+      msg = '⚠️ Wrong data returned — Apps Script sent DashboardOverrides, not Change Log.\n\n'
+        + 'Response keys: ' + Object.keys(first).join(', ') + '\n\n'
+        + 'The ?action=readLog code is NOT deployed in Apps Script.\n\n'
+        + 'FIX (no Apps Script needed):\n'
+        + 'In Google Sheets → File → Share → Publish to web\n'
+        + '→ Select "Change Log" tab → CSV → Publish\n'
+        + 'Then upload the new index.html and refresh.';
+    } else {
+      const orders = [...new Set(data.map(r => String(r['Order Number']||'').trim()).filter(Boolean))];
+      msg = '✅ Change Log loaded correctly: ' + data.length + ' entries across ' + orders.length + ' orders.'
+        + '\n\nFirst entry:\n  ' + JSON.stringify(first)
+        + '\n\nSample order numbers in log:\n  ' + orders.slice(0,5).join(', ')
+        + '\n\nCurrent OVR_ACTIVITY entries: ' + Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length,0)
+        + (orders.length === 0 ? '\n\n⚠️ Order numbers in log don\'t match dashboard — check format' : '');
+    }
   }
 
   alert(msg);
