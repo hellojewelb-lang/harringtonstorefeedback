@@ -1165,9 +1165,11 @@ function pushOverride(orderNumber, field, value){
 async function loadOverrides(){
   if(!APPS_SCRIPT_URL) return;
   try{
-    // Append timestamp to bust Google's aggressive CDN cache — without this,
-    // teammates get stale data because Google returns a cached response.
-    const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now());
+    // Force a completely fresh request — no cache at any layer
+    const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now(), {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+    });
     const rows = await res.json();
     if(!Array.isArray(rows)) return;
     // Build order→idx lookup
@@ -2906,8 +2908,17 @@ setInterval(async ()=>{
   if(!APPS_SCRIPT_URL) return;
   await loadOverrides();
   renderTabBadges();
-  refreshOverridesInDOM(); // patch existing rows only — no full re-render, no chart rebuilds
+  refreshOverridesInDOM();
 }, 20000);
+
+// Also refresh immediately whenever the user comes back to this tab
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState === 'visible' && APPS_SCRIPT_URL){
+    await loadOverrides();
+    renderTabBadges();
+    refreshOverridesInDOM();
+  }
+});
 // Paste your deployed Apps Script URL here (see 2026-06-20-google-apps-script.js for setup)
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnWMWGdOU72HJ8cE16NLIzAmzqw-QSZFFocolK_5Yatuy-rp8oQPQEMCh9DJ2ysNSbBA/exec';
 
