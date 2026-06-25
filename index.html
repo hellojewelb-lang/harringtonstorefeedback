@@ -3116,21 +3116,45 @@ function initTheme(){
 }
 
 async function runBackfill(){
-  if(!APPS_SCRIPT_URL) return;
+  if(!APPS_SCRIPT_URL){ alert('No server connection configured.'); return; }
   const btn = document.getElementById('backfillBtn');
-  if(btn){ btn.textContent = '⏳ Importing…'; btn.disabled = true; }
+  if(btn){ btn.textContent = '⏳ Loading…'; btn.disabled = true; }
   try{
-    const res  = await fetch(APPS_SCRIPT_URL + '?action=backfill&t=' + Date.now());
-    const data = await res.json();
-    if(data.success){
-      alert('✅ Done! ' + data.imported + ' historical records added to the Change Log in Google Sheets.');
-    } else {
-      alert('Something went wrong: ' + (data.error || 'Unknown error'));
+    // Pull the latest data from Sheets first so OVR_* maps are current
+    await loadOverrides();
+
+    // Collect every manually-overridden field across all rows
+    const entries = [];
+    raw.forEach((r, idx) => {
+      const order = String(r?.order||'').trim();
+      if(!order || order==='-') return;
+      if(OVR_S[idx]) entries.push([order,'S',OVR_S[idx]]);
+      if(OVR_A[idx]) entries.push([order,'A',OVR_A[idx]]);
+      if(OVR_D[idx]) entries.push([order,'D',OVR_D[idx]]);
+      if(OVR_C[idx]) entries.push([order,'C',OVR_C[idx]]);
+      if(OVR_P[idx]) entries.push([order,'P',OVR_P[idx]]);
+    });
+    if(!entries.length){ alert('No override data found to import.'); return; }
+
+    // Push each entry through the existing write endpoint with a "Pre-log" username
+    let done = 0;
+    for(const [order, field, value] of entries){
+      const url = APPS_SCRIPT_URL
+        + '?action=write'
+        + '&orderNumber=' + encodeURIComponent(order)
+        + '&field='       + encodeURIComponent(field)
+        + '&value='       + encodeURIComponent(value)
+        + '&username='    + encodeURIComponent('Pre-log (imported)');
+      try{ await fetch(url); } catch(e){}
+      done++;
+      if(btn) btn.textContent = `⏳ ${done}/${entries.length}…`;
+      await new Promise(res => setTimeout(res, 250)); // pace requests
     }
+    alert('✅ Done! ' + done + ' records added to the Change Log in Google Sheets.');
   } catch(e){
-    alert('Could not reach the server. Check your internet connection and try again.');
+    alert('Something went wrong: ' + e.message);
   } finally {
-    if(btn){ btn.textContent = '📋 Import History'; btn.disabled = false; }
+    if(btn){ btn.textContent = '📋 Import Change History'; btn.disabled = false; }
   }
 }
 
