@@ -280,9 +280,12 @@ tbody tr.row-resolved .col-order{text-decoration:line-through;color:#9ca3af !imp
 .c-refund  {background:#f0fdf4;color:#166534}
 .c-cancel  {background:#fdf4ff;color:#7e22ce}
 .c-modify  {background:#fff7ed;color:#9a3412}
-.c-question{background:#f1f5f9;color:#475569}
-.c-dispute {background:#fef2f2;color:#dc2626}
-.c-other   {background:#f9fafb;color:#6b7280}
+.c-question  {background:#f1f5f9;color:#475569}
+.c-sizing-sm {background:#fff0f9;color:#9d3c7a}
+.c-sizing-lg {background:#f0f9ff;color:#0c5a8a}
+.c-sizing    {background:#fdf0ff;color:#6b21a8}
+.c-dispute   {background:#fef2f2;color:#dc2626}
+.c-other     {background:#f9fafb;color:#6b7280}
 .a-URGENT   {background:#fee2e2;color:#dc2626}
 .a-Email    {background:#dbeafe;color:#1d4ed8}
 .a-Confirm  {background:#fef3c7;color:#d97706}
@@ -1100,10 +1103,13 @@ const CAT_CSS = {
   'Cancellation request':                  'c-cancel',
   'Order or address modification request': 'c-modify',
   'General product question or complaint': 'c-question',
+  'Sizing issue — too small':              'c-sizing-sm',
+  'Sizing issue — too big':               'c-sizing-lg',
+  'Sizing issue':                          'c-sizing',
   'Chargeback or PayPal dispute':          'c-dispute',
   'Other':                                 'c-other',
   // Legacy short names (existing local data)
-  'Quality':'c-qual','Material':'c-qual','Stitching':'c-defect','Fit/Size':'c-question',
+  'Quality':'c-qual','Material':'c-qual','Stitching':'c-defect','Fit/Size':'c-sizing',
   'Hardware':'c-defect','Shape':'c-qual','Packaging':'c-defect','Wrong Item':'c-wrong',
   'Origin':'c-question','Delivery':'c-delivery','Refund':'c-refund','Dispute':'c-dispute',
   'Pricing':'c-question','Style':'c-question',
@@ -2719,6 +2725,39 @@ We want to make sure we help you properly. Could you share a bit more detail abo
 We'll be in touch soon.
 
 The Harrington Team`,
+
+    'Sizing issue — too small':
+`Thanks for getting in touch about ${orderRef}.
+
+Sorry to hear the fit wasn't right — we know how frustrating it is when something runs smaller than expected.
+
+Our hats are covered by our 100-Day Fit Guarantee, so we want to sort this out for you. Could you let us know the size you ordered and confirm how it's fitting? We'll find the best path forward, whether that's an exchange or another solution.
+
+We'll be in touch soon.
+
+The Harrington Team`,
+
+    'Sizing issue — too big':
+`Thanks for getting in touch about ${orderRef}.
+
+Sorry to hear the fit wasn't right — we know how important it is to get the right size.
+
+Our hats are covered by our 100-Day Fit Guarantee, so we want to sort this out for you. Could you let us know the size you ordered and confirm how it's fitting? We'll find the best path forward, whether that's an exchange or another solution.
+
+We'll be in touch soon.
+
+The Harrington Team`,
+
+    'Sizing issue':
+`Thanks for getting in touch about ${orderRef}.
+
+Sorry to hear the fit wasn't what you were hoping for. Our hats are covered by our 100-Day Fit Guarantee, so we want to make sure we find the right solution for you.
+
+Could you let us know a bit more about the sizing issue? We'll get back to you with next steps.
+
+We'll be in touch soon.
+
+The Harrington Team`,
   };
   return templates[cat] || `Thanks for getting in touch about ${orderRef}.
 
@@ -2739,6 +2778,9 @@ function emailSubject(cat, order){
     'Refund request':                  `Your refund request — ${order}`,
     'Cancellation request':            `Cancellation confirmation — ${order}`,
     'General product question or complaint': `Following up on your order — ${order}`,
+    'Sizing issue — too small': `Sizing issue — ${order}`,
+    'Sizing issue — too big':   `Sizing issue — ${order}`,
+    'Sizing issue':             `Sizing issue — ${order}`,
   };
   return subjectMap[cat] || `Following up on your order — ${order}`;
 }
@@ -2941,8 +2983,12 @@ function categorizeForm(mainProblem, desc){
     return {cat:'Refund request', dept:'CS', action:'Email'};
   if(/cancel/.test(c))
     return {cat:'Cancellation request', dept:'CS', action:'Email'};
-  if(/fit|size|too big|too small|loose|tight|small|large/.test(c))
-    return {cat:'General product question or complaint', dept:'CS', action:'Email'};
+  if(/too small|runs small|came up small|smaller than|size.*small|small.*size|size.*up|ordered.*small|tight|too tight/.test(c))
+    return {cat:'Sizing issue — too small', dept:'CS', action:'Email'};
+  if(/too big|runs big|came up big|larger than|size.*big|big.*size|size.*down|ordered.*big|loose|too loose|oversize/.test(c))
+    return {cat:'Sizing issue — too big', dept:'CS', action:'Email'};
+  if(/fit|size|sizing/.test(c))
+    return {cat:'Sizing issue', dept:'CS', action:'Email'};
   return {cat:'General product question or complaint', dept:'CS', action:'Email'};
 }
 
