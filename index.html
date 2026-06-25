@@ -636,7 +636,6 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <button class="hdr-icon-btn" onclick="setTab('today')" title="Go to Overview">🏠 Home</button>
     <button class="hdr-icon-btn" id="tab-trends" onclick="setTab('trends')" style="background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4);color:#93c5fd">📊 Trends</button>
     <button class="hdr-icon-btn" onclick="toggleTheme()" id="themeBtn">🌙 Dark</button>
-    <button class="hdr-icon-btn" onclick="runBackfill()" id="backfillBtn" title="Import all past changes into the Change Log" style="background:rgba(255,255,255,.08);font-size:11px">📋 Import History</button>
     <button class="hdr-icon-btn" onclick="changeName()" id="nameBtn" title="Change your name" style="background:rgba(255,255,255,.08);font-size:11px">👤 <span id="nameDisplay">Set name</span></button>
   </div>
 </header>
@@ -678,9 +677,10 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   </div>
 
   <div class="sec-lbl" style="margin-top:16px">Customer Voice Map</div>
-  <div id="wordCloudWrap" style="border-radius:10px;overflow:hidden;background:rgba(0,0,0,.04);min-height:140px;display:flex;align-items:center;justify-content:center">
-    <svg id="wordCloudSvg" width="228" height="160" style="display:block"></svg>
+  <div id="wordCloudWrap" style="border-radius:10px;padding:10px 8px;background:rgba(0,0,0,.04);min-height:100px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 10px">
   </div>
+
+  <button id="backfillBtn" onclick="runBackfill()" title="Import all past changes into the Change Log" style="margin-top:14px;width:100%;background:none;border:1px dashed #d1d5db;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;color:#6b7280;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='none'">📋 Import Change History</button>
 </aside>
 
 <!-- ── MAIN ── -->
@@ -2108,8 +2108,8 @@ function destroyOvChart(id){ if(_ovCharts[id]){ _ovCharts[id].destroy(); delete 
 // WORD CLOUD — customer voice map
 // ═══════════════════════════════════════════════════════════
 function renderWordCloud(rows){
-  const svg = document.getElementById('wordCloudSvg');
-  if(!svg) return;
+  const wrap = document.getElementById('wordCloudWrap');
+  if(!wrap) return;
   const STOP = new Set(['the','a','an','and','or','but','in','on','at','to','for','of','with','my','i','it','was','is','are','this','that','have','had','not','so','as','be','were','they','we','he','she','they','me','you','its','been','has','would','could','did','do','get','got','just','also','very','much','when','what','from','no','yes','than','more','about','by','after','which','one','can','will','if','there','all','out','up','their','our','his','her','too','came','come','into','order','item']);
   const freq = {};
   rows.forEach(r=>{
@@ -2119,31 +2119,22 @@ function renderWordCloud(rows){
       if(w.length > 3 && !STOP.has(w)) freq[w]=(freq[w]||0)+1;
     });
   });
-  // Limit to top 20 words — keeps it readable and fast on all devices
-  const words = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,20);
-  if(!words.length){ svg.innerHTML='<text x="114" y="80" text-anchor="middle" fill="#9ca3af" font-size="11">No data yet</text>'; return; }
-
-  const W=228, H=160;
+  const words = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,18);
+  if(!words.length){
+    wrap.innerHTML='<span style="color:#9ca3af;font-size:11px">No data yet</span>';
+    return;
+  }
   const maxF = words[0][1], minF = words[words.length-1][1];
-  const scale = maxF===minF ? ()=>14 : f => 10 + Math.round((f-minF)/(maxF-minF)*18);
+  const scale = maxF===minF ? ()=>13 : f => 10 + Math.round((f-minF)/(maxF-minF)*14);
   const COLORS = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#06b6d4','#ec4899','#6366f1'];
 
-  // Fixed grid layout — no collision detection, no spiral, instant on all devices
-  const cols = 4, rowH = H / Math.ceil(words.length / cols);
-  let svgContent = '';
-  words.forEach(([word, freq_val], i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = (col + 0.5) * (W / cols);
-    const y = row * rowH + rowH * 0.6;
-    const fs = scale(freq_val);
-    const color = COLORS[i % COLORS.length];
-    const weight = freq_val > maxF * .6 ? '800' : freq_val > maxF * .3 ? '700' : '600';
-    const opacity = 0.75 + (freq_val - minF) / (maxF - minF || 1) * 0.25;
-    svgContent += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="${weight}" fill="${color}" opacity="${opacity.toFixed(2)}" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" style="cursor:default" title="${word}: ${freq_val}">${word}</text>`;
-  });
-
-  svg.innerHTML = svgContent;
+  wrap.innerHTML = words.map(([word, fv], i) => {
+    const fs     = scale(fv);
+    const color  = COLORS[i % COLORS.length];
+    const weight = fv > maxF * .6 ? '800' : fv > maxF * .3 ? '700' : '600';
+    const opacity = (0.7 + (fv - minF) / (maxF - minF || 1) * 0.3).toFixed(2);
+    return `<span style="font-size:${fs}px;font-weight:${weight};color:${color};opacity:${opacity};white-space:nowrap;cursor:default;line-height:1.4" title="${word}: ${fv} mentions">${word}</span>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════
