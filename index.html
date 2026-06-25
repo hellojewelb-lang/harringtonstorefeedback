@@ -1434,10 +1434,42 @@ function chgP(idx, sel){
   renderTabBadges();
   renderSidebarDebounced();
 }
+// Auto-logs a status/action/dept change into the comment field so everyone sees who did it.
+function logChangeToComment(idx, description){
+  const name = localStorage.getItem('ams_username') || 'Unknown';
+  const now  = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const entry = `${name}: ${description} · ${now}`;
+
+  // Append to local comment log
+  if(!OVR_CL[idx]) OVR_CL[idx] = [];
+  OVR_CL[idx].push(entry);
+  if(OVR_CL[idx].length > 5) OVR_CL[idx] = OVR_CL[idx].slice(-5); // keep last 5
+  saveCL();
+
+  // Build the full C value: existing comment text + activity entry
+  const existing = OVR_C[idx] || '';
+  const fullVal  = existing ? `${existing} / ${entry}` : entry;
+  OVR_C[idx] = fullVal;
+  saveC();
+
+  // Sync to Sheets so every teammate sees it
+  if(raw[idx]?.order) pushOverride(raw[idx].order, 'C', fullVal);
+
+  // Update comment input + log in the DOM immediately
+  const tr = document.querySelector(`tr[data-idx="${idx}"]`);
+  if(tr){
+    const inp = tr.querySelector('.comment-inp');
+    if(inp && document.activeElement !== inp) inp.value = fullVal;
+    const logEl = tr.querySelector('.comment-log');
+    if(logEl) logEl.innerHTML = OVR_CL[idx].map(e=>`<div class="comment-by">${e}</div>`).join('');
+  }
+}
+
 function chgS(idx, sel){
   OVR_S[idx] = sel.value;
   saveS();
   pushOverride(raw[idx]?.order, 'S', sel.value);
+  logChangeToComment(idx, `Status → ${sel.value}`);
   sel.className = 'sel-s s-'+sel.value;
   const par = sel.closest('tr');
   if(par) par.classList.toggle('row-resolved', sel.value==='Resolved');
@@ -1448,10 +1480,20 @@ function chgA(idx, sel){
   OVR_A[idx] = sel.value;
   saveA();
   pushOverride(raw[idx]?.order, 'A', sel.value);
+  logChangeToComment(idx, `Action → ${sel.value}`);
   const css = sel.value==='No Action'?'a-NoAction':'a-'+sel.value;
   sel.className = 'sel-a '+css;
   const par = sel.closest('tr');
   if(par) par.classList.toggle('row-urg', sel.value==='URGENT');
+  renderTabBadges();
+  renderSidebarDebounced();
+}
+function chgDept(idx, sel){
+  OVR_D[idx] = sel.value;
+  saveD();
+  pushOverride(raw[idx]?.order, 'D', sel.value);
+  logChangeToComment(idx, `Dept → ${sel.value}`);
+  sel.className = 'sel-d d-'+(DEPT_CSS[sel.value]||'').replace('d-','');
   renderTabBadges();
   renderSidebarDebounced();
 }
@@ -1479,14 +1521,6 @@ function chgC(idx, el){
   // Update log display in DOM without full re-render
   const logEl = el.closest('td')?.querySelector('.comment-log');
   if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
-}
-function chgDept(idx, sel){
-  OVR_D[idx] = sel.value;
-  saveD();
-  pushOverride(raw[idx]?.order, 'D', sel.value);
-  sel.className = 'sel-d d-'+(DEPT_CSS[sel.value]||'').replace('d-','');
-  renderTabBadges();
-  renderSidebarDebounced();
 }
 
 // ═══════════════════════════════════════════════════════════
