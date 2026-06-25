@@ -1164,7 +1164,9 @@ function pushOverride(orderNumber, field, value){
 async function loadOverrides(){
   if(!APPS_SCRIPT_URL) return;
   try{
-    const res  = await fetch(APPS_SCRIPT_URL);
+    // Append timestamp to bust Google's aggressive CDN cache — without this,
+    // teammates get stale data because Google returns a cached response.
+    const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now());
     const rows = await res.json();
     if(!Array.isArray(rows)) return;
     // Build order→idx lookup
@@ -2872,14 +2874,14 @@ function unmarkEmailed(idx){
 }
 
 // ── Background polling — keeps all teammates in sync ─────────
-// Every 45 s: silently re-fetch overrides (including emailed status)
+// Every 20 s: silently re-fetch overrides (including emailed status)
 // and re-render the current tab so buttons + counts stay current.
 setInterval(async ()=>{
   if(!APPS_SCRIPT_URL) return;
   await loadOverrides();
   renderTabBadges();
   refreshOverridesInDOM(); // patch existing rows only — no full re-render, no chart rebuilds
-}, 45000);
+}, 20000);
 // Paste your deployed Apps Script URL here (see 2026-06-20-google-apps-script.js for setup)
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnWMWGdOU72HJ8cE16NLIzAmzqw-QSZFFocolK_5Yatuy-rp8oQPQEMCh9DJ2ysNSbBA/exec';
 
