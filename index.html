@@ -1160,39 +1160,67 @@ function pushOverride(orderNumber, field, value){
   fetch(url).catch(e=> console.warn('[AMS] Override sync failed:', e));
 }
 
-// Fetches all saved overrides from Google Sheets on page load
-// and merges them into the local OVR_* maps.
+// ── Direct Sheets CSV read — bypasses Apps Script caching entirely ──
+// Reads DashboardOverrides straight from the Google Sheet, same method
+// as the feedback CSV feed. No Apps Script involved = no cached responses.
+const OVERRIDES_SHEET_ID = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
+
+function applyOverrideRows(rows){
+  const orderToIdx = {};
+  raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
+  rows.forEach(ov=>{
+    const orderKey = String(ov.OrderNumber||'').trim();
+    const idx = orderToIdx[orderKey];
+    if(idx !== undefined){
+      if(ov.P) OVR_P[idx] = ov.P;
+      if(ov.S) OVR_S[idx] = ov.S;
+      if(ov.A) OVR_A[idx] = ov.A;
+      if(ov.D) OVR_D[idx] = ov.D;
+      if(ov.C) OVR_C[idx] = ov.C;
+    }
+    if(ov.Emailed) OVR_E[orderKey] = ov.Emailed;
+  });
+  saveP(); saveS(); saveA(); saveD(); saveC(); saveE(); saveCL();
+}
+
 async function loadOverrides(){
+  const orderToIdx = {};
+  raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
+
+  // ── PRIMARY: Read directly from Google Sheets (no Apps Script, no caching) ──
+  try{
+    const directUrl = `https://docs.google.com/spreadsheets/d/${OVERRIDES_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DashboardOverrides&t=${Date.now()}`;
+    const res     = await fetch(directUrl, { cache: 'no-store' });
+    const csvText = await res.text();
+    // If we got actual CSV data (not a login redirect page)
+    if(csvText && csvText.length > 10 && !csvText.trim().startsWith('<')){
+      const csvRows = parseCSV(csvText);
+      if(csvRows.length > 1){
+        const hdrs = csvRows[0].map(h=>h.replace(/^"|"$/g,'').trim());
+        const parsed = csvRows.slice(1).map(cols=>{
+          const obj={};
+          hdrs.forEach((h,i)=>{ obj[h]=(cols[i]||'').replace(/^"|"$/g,'').trim(); });
+          return obj;
+        }).filter(o=>o.OrderNumber);
+        applyOverrideRows(parsed);
+        console.log('[AMS] Overrides loaded directly from Sheets:', parsed.length, 'rows');
+        return; // success — skip fallback
+      }
+    }
+  } catch(e){
+    console.log('[AMS] Direct sheet read failed, trying Apps Script fallback:', e.message);
+  }
+
+  // ── FALLBACK: Apps Script (used only if direct read above fails) ──
   if(!APPS_SCRIPT_URL) return;
   try{
-    // Force a completely fresh request — no cache at any layer
-    const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now(), {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
-    });
+    const res  = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now(), { cache: 'no-store' });
     const rows = await res.json();
     if(!Array.isArray(rows)) return;
-    // Build order→idx lookup
-    const orderToIdx = {};
-    raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
-    rows.forEach(ov=>{
-      const orderKey = String(ov.OrderNumber||'').trim();
-      const idx = orderToIdx[orderKey];
-      if(idx !== undefined){
-        if(ov.P) OVR_P[idx] = ov.P;
-        if(ov.S) OVR_S[idx] = ov.S;
-        if(ov.A) OVR_A[idx] = ov.A;
-        if(ov.D) OVR_D[idx] = ov.D;
-        if(ov.C) OVR_C[idx] = ov.C;
-      }
-      // Emailed is keyed by order number (not idx) so it survives re-imports
-      if(ov.Emailed) OVR_E[orderKey] = ov.Emailed;
-    });
-    // Persist to localStorage as cache
-    saveP(); saveS(); saveA(); saveD(); saveC(); saveE(); saveCL();
-    console.log('[AMS] Overrides loaded from Sheets:', rows.length, 'rows');
+    applyOverrideRows(rows);
+    console.log('[AMS] Overrides loaded via Apps Script fallback:', rows.length, 'rows');
   } catch(e){
-    console.warn('[AMS] Could not load overrides from Sheets:', e);
+    console.warn('[AMS] Could not load overrides:', e);
   }
 }
 function getP(i){ return OVR_P[i] ?? P_DEFAULT[raw[i].action] ?? 'Low'; }
@@ -2904,16 +2932,16 @@ function unmarkEmailed(idx){
 // ── Background polling — keeps all teammates in sync ─────────
 // Every 20 s: silently re-fetch overrides (including emailed status)
 // and re-render the current tab so buttons + counts stay current.
+// Poll every 10 seconds — direct Sheets read is fast enough to support this
 setInterval(async ()=>{
-  if(!APPS_SCRIPT_URL) return;
   await loadOverrides();
   renderTabBadges();
   refreshOverridesInDOM();
-}, 20000);
+}, 10000);
 
-// Also refresh immediately whenever the user comes back to this tab
+// Also refresh the moment anyone switches back to this tab
 document.addEventListener('visibilitychange', async ()=>{
-  if(document.visibilityState === 'visible' && APPS_SCRIPT_URL){
+  if(document.visibilityState === 'visible'){
     await loadOverrides();
     renderTabBadges();
     refreshOverridesInDOM();
