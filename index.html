@@ -3084,6 +3084,19 @@ function showToast(msg, durationMs=3500){
 // Change Log is the source of truth for who wrote what — never overwritten.
 async function syncAndRender(){
   const [ovChanged, clChanged] = await Promise.all([loadOverrides(), loadChangeLog()]);
+
+  // Show Change Log status appended to the sync line so it's always visible
+  const el = document.getElementById('syncStatus');
+  if(el){
+    const clTotal = Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length, 0);
+    if(clTotal > 0){
+      el.textContent += ` · 📋 ${clTotal} log entries`;
+    } else {
+      el.textContent += ' · 📋 log: ⚠️ needs Apps Script redeploy';
+      el.style.color = '#fca5a5';
+    }
+  }
+
   renderTabBadges();
   if(ovChanged || clChanged){
     renderTab(currentTab);
