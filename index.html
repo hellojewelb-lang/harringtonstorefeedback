@@ -629,7 +629,10 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   <div class="hdr-title-btn" onclick="setTab('today')">
     <div class="hdr-title">AMS Feedback Dashboard</div>
     <div class="hdr-meta" id="hdrMeta">Loading…</div>
-    <div id="syncStatus" style="font-size:10px;color:rgba(255,255,255,.35);margin-top:1px">⏳ syncing…</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:1px">
+      <div id="syncStatus" style="font-size:10px;color:#7dd3fc;font-weight:500">⏳ syncing…</div>
+      <button onclick="syncAndRender()" title="Force sync now" style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#7dd3fc;cursor:pointer;line-height:1.4">↺</button>
+    </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <div class="hdr-pill" id="hdrPill" style="display:none" onclick="urgentPillClick()" title="View all Urgent items">⚠️ <span id="hdrPillN">0</span> Urgent</div>
@@ -1146,19 +1149,48 @@ try { OVR_E = JSON.parse(localStorage.getItem('ams_e') || '{}'); } catch(e){}
 function saveE(){ try{ localStorage.setItem('ams_e', JSON.stringify(OVR_E)); }catch(e){} }
 
 // ── Google Sheets sync ──────────────────────────────────────
-// Sends a single dropdown change to the Apps Script endpoint.
-// Falls back silently — local state is always updated first.
+// Sequential write queue — prevents two simultaneous writes (e.g. field + auto-comment)
+// from hitting Apps Script at the same time, which can cause one to silently fail.
+const _writeQ = [];
+let _writeBusy = false;
+
+async function _flushWrites(){
+  if(_writeBusy || !_writeQ.length) return;
+  _writeBusy = true;
+  while(_writeQ.length){
+    const {url, field} = _writeQ.shift();
+    try{
+      const res  = await fetch(url, {cache:'no-store'});
+      const json = await res.json().catch(()=>null);
+      if(json && json.success){
+        const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        setSyncStatus(`saved ${t} (${field})`, true);
+      } else {
+        setSyncStatus(`save failed (${field}): ${json?.error||'unknown'}`, false);
+        console.warn('[AMS] Write returned error:', json);
+      }
+    } catch(e){
+      setSyncStatus(`save error: ${e.message}`, false);
+      console.warn('[AMS] Write threw:', e);
+    }
+    if(_writeQ.length) await new Promise(r=>setTimeout(r,400));
+  }
+  _writeBusy = false;
+}
+
 function pushOverride(orderNumber, field, value){
   if(!APPS_SCRIPT_URL || !orderNumber) return;
   const username = localStorage.getItem('ams_username') || 'Unknown';
-  // Use GET with URL params to avoid CORS preflight issues with Apps Script
   const url = APPS_SCRIPT_URL
     + '?action=write'
     + '&orderNumber=' + encodeURIComponent(orderNumber)
     + '&field='       + encodeURIComponent(field)
     + '&value='       + encodeURIComponent(value)
     + '&username='    + encodeURIComponent(username);
-  fetch(url).catch(e=> console.warn('[AMS] Override sync failed:', e));
+  _writeQ.push({url, field});
+  const pending = _writeQ.length + (_writeBusy ? 1 : 0);
+  setSyncStatus(`saving${pending > 1 ? ` (${pending})` : ''}…`, true);
+  _flushWrites();
 }
 
 // ── Direct Sheets CSV read — bypasses Apps Script caching entirely ──
@@ -1188,7 +1220,9 @@ function applyOverrideRows(rows){
 
 function setSyncStatus(msg, ok){
   const el = document.getElementById('syncStatus');
-  if(el) el.textContent = (ok ? '✅' : '⚠️') + ' ' + msg;
+  if(!el) return;
+  el.textContent = (ok ? '✅' : '⚠️') + ' ' + msg;
+  el.style.color = ok ? '#86efac' : '#fca5a5'; // bright green or red — always visible
 }
 
 async function loadOverrides(){
@@ -2942,16 +2976,29 @@ function unmarkEmailed(idx){
   renderSidebarForCurrent();
 }
 
+// ── Toast — brief pop-up notice ─────────────────────────────
+function showToast(msg, durationMs=3500){
+  let t = document.getElementById('amsToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'amsToast';
+    t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:#7dd3fc;border:1px solid #3b82f6;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(()=>{ t.style.opacity='0'; }, durationMs);
+}
+
 // ── Background polling — keeps all teammates in sync ─────────
-// Every 20 s: silently re-fetch overrides (including emailed status)
-// and re-render the current tab so buttons + counts stay current.
+// Polls every 10 s; re-fetches overrides and re-renders if new data found.
 async function syncAndRender(){
   const changed = await loadOverrides();
   renderTabBadges();
   if(changed){
-    // New data arrived — full re-render so every row is updated,
-    // even if it wasn't in the DOM before (different filter/tab/date)
     renderTab(currentTab);
+    showToast('↓ Team updates received');
   } else {
     refreshOverridesInDOM();
   }
