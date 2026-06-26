@@ -1453,7 +1453,7 @@ function fmt(iso){ return new Date(iso+'T00:00:00').toLocaleDateString('en-GB',{
 function fmtLong(iso){ return new Date(iso+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 function fmtMon(ym){ return new Date(ym+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'}); }
 function badge(txt,cls,oc){ return `<span class="badge ${cls||''}"${oc?` onclick="${oc}" title="Filter: ${txt}"`:''}>${txt}</span>`; }
-function catBadge(c,tab)  { return badge(c, CAT_CSS[c]||'',    tab?`filterClick('cat','${c}','${tab}')`:null); }
+function catBadge(c,tab)  { return badge((catSym(c)?catSym(c)+' ':'')+c, CAT_CSS[c]||'', tab?`filterClick('cat','${c}','${tab}')`:null); }
 function deptBadge(d,tab) { return badge(DEPT_LBLS[d]||d, DEPT_CSS[d]||'', tab?`filterClick('dept','${d}','${tab}')`:null); }
 function actionBadge(a,tab){ return badge(a, ACTION_CSS[a]||'', tab?`filterClick('action','${a}','${tab}')`:null); }
 
