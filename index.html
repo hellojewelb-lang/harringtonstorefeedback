@@ -7,8 +7,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-.col-comment{min-width:140px;max-width:200px}
-.comment-inp{width:100%;font-size:11px;padding:4px 7px;border:1px solid #e5e7eb;border-radius:6px;color:#374151;background:#f9fafb;outline:none;font-family:inherit;transition:border-color .15s,background .15s}
+.col-comment{min-width:200px;max-width:280px}
+.comment-inp{width:100%;font-size:11px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;color:#374151;background:#f9fafb;outline:none;font-family:inherit;transition:border-color .15s,background .15s;min-height:64px;resize:vertical;line-height:1.5;display:block}
 .comment-inp:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 2px rgba(99,102,241,.12)}
 .comment-inp::placeholder{color:#9ca3af}
 [data-theme="dark"] .comment-inp{background:#1e2535;border-color:#374151;color:#e2e8f0}
@@ -293,7 +293,7 @@ tbody tr.row-resolved .col-order{text-decoration:line-through;color:#9ca3af !imp
 .empty-sub{font-size:11px;margin-top:4px}
 
 /* ── BADGES ── */
-.badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
 
 /* ── CATEGORY COLOURS (tracking-log names) ── */
 .c-qual    {background:#fef9c3;color:#854d0e}
@@ -1665,7 +1665,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
           <option value="Resolved" ${s==='Resolved'?'selected':''}>Resolved</option>
         </select>
       </td>
-      <td class="col-comment"><input class="comment-inp" type="text" placeholder="Add note…" value="${getC(r.idx).replace(/"/g,'&quot;')}" onchange="chgC(${r.idx},this)" title="Add a comment or note"><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
+      <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
 }
