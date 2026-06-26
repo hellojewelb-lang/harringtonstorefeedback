@@ -157,41 +157,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* ── PERIOD CARDS ── */
 .cards-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));margin-bottom:12px}
 .cards-grid.monthly{grid-template-columns:repeat(auto-fill,minmax(185px,1fr))}
-/* base card */
-.pc{background:white;border-radius:14px;padding:0;box-shadow:0 2px 6px rgba(0,0,0,.07);cursor:pointer;border:1.5px solid #e5e7eb;transition:all .18s;position:relative;overflow:hidden;display:flex;flex-direction:column}
-.pc:hover{box-shadow:0 6px 18px rgba(0,0,0,.12);transform:translateY(-2px)}
-.pc.sel{box-shadow:0 0 0 3px rgba(26,26,46,.15);border-color:#1a1a2e}
-/* threshold border colours */
-.pc-low {border-color:#86efac}
-.pc-mid {border-color:#fcd34d}
-.pc-high{border-color:#fda4af}
-.pc-low:hover {border-color:#4ade80;box-shadow:0 6px 18px rgba(34,197,94,.18)}
-.pc-mid:hover {border-color:#f59e0b;box-shadow:0 6px 18px rgba(245,158,11,.18)}
-.pc-high:hover{border-color:#fb7185;box-shadow:0 6px 18px rgba(244,63,94,.18)}
-.pc.has-urg   {outline:2px solid #dc2626;outline-offset:1px}
-/* card head — clean white */
-.pc-head{padding:10px 12px 8px;background:white;border-bottom:1px solid #f3f4f6;display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
-.pc-lbl{font-size:11px;font-weight:800;color:#1f2937;line-height:1.35;flex:1}
-.pc-date{font-size:10px;font-weight:500;color:#9ca3af;margin-top:1px;line-height:1.3}
-.pc-badge{font-size:10px;font-weight:800;color:white;background:#dc2626;border-radius:20px;padding:2px 8px;white-space:nowrap;flex-shrink:0;line-height:1.5;box-shadow:0 2px 5px rgba(220,38,38,.35)}
-/* card body — coloured fill pill */
-.pc-body{padding:10px 10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;background:white}
-.pc-fill{width:100%;border-radius:10px;padding:12px 8px 9px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:background .18s}
-.pc-low  .pc-fill{background:#dcfce7}
-.pc-mid  .pc-fill{background:#fef9c3}
-.pc-high .pc-fill{background:#ffe4e6}
-.pc-total{font-size:44px;font-weight:900;line-height:1;letter-spacing:-2px}
-.pc-low  .pc-total{color:#14532d}
-.pc-mid  .pc-total{color:#78350f}
-.pc-high .pc-total{color:#881337}
-.pc-sub{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;margin-top:4px}
-.pc-low  .pc-sub{color:#4ade80}
-.pc-mid  .pc-sub{color:#f59e0b}
-.pc-high .pc-sub{color:#fb7185}
+/* ── PERIOD CARDS — redesign ── */
+.pc{border-radius:14px;padding:0;cursor:pointer;border:none;transition:all .18s;position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 10px rgba(0,0,0,.09)}
+.pc:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(0,0,0,.15)}
+.pc.sel{box-shadow:0 0 0 3px #1e3a8a,0 4px 14px rgba(0,0,0,.15)}
+/* blue header — always */
+.pc-head{padding:12px 13px 10px;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);border-bottom:none;display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.pc-lbl{font-size:16px;font-weight:900;color:white;line-height:1.2;flex:1;letter-spacing:-.3px}
+.pc-date{font-size:10px;font-weight:500;color:rgba(255,255,255,.65);margin-top:2px;line-height:1.3}
+/* urgent badge — amber, not red */
+.pc-badge{font-size:10px;font-weight:800;color:#1c1917;background:#fbbf24;border-radius:20px;padding:2px 8px;white-space:nowrap;flex-shrink:0;line-height:1.6}
+/* card body — threshold fill */
+.pc-body{padding:16px 12px 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1}
+.pc-fill{display:contents}
+.pc-low  .pc-body{background:linear-gradient(160deg,#f0fdf4,#dcfce7)}
+.pc-mid  .pc-body{background:linear-gradient(160deg,#fffbeb,#fef3c7)}
+.pc-high .pc-body{background:linear-gradient(160deg,#fff7ed,#fed7aa)}
+/* count — always black, smaller than header date */
+.pc-total{font-size:34px;font-weight:900;color:#111827;line-height:1;letter-spacing:-1px}
+.pc-sub{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-top:5px;color:#6b7280}
 /* card footer */
-.pc-row{padding:7px 11px;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:5px;background:#fafafa;min-height:27px}
-.pc-urg{font-size:10px;font-weight:700;color:#dc2626;white-space:nowrap;flex-shrink:0}
-.pc-top{font-size:10px;color:#6b7280;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-row{padding:8px 12px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.8);min-height:28px}
+.pc-urg{font-size:10px;font-weight:700;color:#d97706;white-space:nowrap;flex-shrink:0}
+.pc-top{font-size:10px;color:#374151;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .delta{font-size:10px;font-weight:700;margin-top:4px}
 .delta.up{color:#dc2626}
 .delta.dn{color:#065f46}
@@ -528,28 +516,14 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
 [data-theme="dark"] .sel-d.d-PP{background-color:#4a3a10;color:#fcd34d;border-color:#7a6020}
 
 /* Dark period cards */
-[data-theme="dark"] .pc{background:#1e2535;border-color:#2d3748;box-shadow:0 2px 8px rgba(0,0,0,.3)}
-[data-theme="dark"] .pc-low {border-color:#166534}
-[data-theme="dark"] .pc-mid {border-color:#92400e}
-[data-theme="dark"] .pc-high{border-color:#9f1239}
-[data-theme="dark"] .pc-low:hover {box-shadow:0 6px 18px rgba(34,197,94,.15)}
-[data-theme="dark"] .pc-mid:hover {box-shadow:0 6px 18px rgba(245,158,11,.15)}
-[data-theme="dark"] .pc-high:hover{box-shadow:0 6px 18px rgba(244,63,94,.15)}
-[data-theme="dark"] .pc-head{background:#252d3d;border-bottom-color:#2d3748}
-[data-theme="dark"] .pc-lbl{color:#e2e8f0}
-[data-theme="dark"] .pc-date{color:#64748b}
-[data-theme="dark"] .pc-body{background:#1e2535}
-[data-theme="dark"] .pc-low  .pc-fill{background:rgba(34,197,94,.12)}
-[data-theme="dark"] .pc-mid  .pc-fill{background:rgba(245,158,11,.12)}
-[data-theme="dark"] .pc-high .pc-fill{background:rgba(244,63,94,.12)}
-[data-theme="dark"] .pc-low  .pc-total{color:#86efac}
-[data-theme="dark"] .pc-mid  .pc-total{color:#fde68a}
-[data-theme="dark"] .pc-high .pc-total{color:#fda4af}
-[data-theme="dark"] .pc-low  .pc-sub{color:#4ade80}
-[data-theme="dark"] .pc-mid  .pc-sub{color:#fbbf24}
-[data-theme="dark"] .pc-high .pc-sub{color:#fb7185}
-[data-theme="dark"] .pc-row{background:#252d3d;border-top-color:#2d3748}
-[data-theme="dark"] .pc-top{color:#94a3b8}
+[data-theme="dark"] .pc-head{background:linear-gradient(135deg,#172554 0%,#1d4ed8 100%)}
+[data-theme="dark"] .pc-low  .pc-body{background:linear-gradient(160deg,#052e16,#14532d)}
+[data-theme="dark"] .pc-mid  .pc-body{background:linear-gradient(160deg,#1c1207,#451a03)}
+[data-theme="dark"] .pc-high .pc-body{background:linear-gradient(160deg,#1a0f00,#431407)}
+[data-theme="dark"] .pc-total{color:#f1f5f9}
+[data-theme="dark"] .pc-sub{color:#94a3b8}
+[data-theme="dark"] .pc-row{background:rgba(15,23,42,.6);border-top-color:rgba(255,255,255,.06)}
+[data-theme="dark"] .pc-top{color:#cbd5e1}
 
 /* Dark misc */
 [data-theme="dark"] .rmeta{color:#a0b2c8}
@@ -1515,6 +1489,8 @@ function getMonths(){
 }
 
 function pcClass(n){ return n<=20?'pc-low':n<=35?'pc-mid':'pc-high'; }
+const CAT_SYM={'Poor product quality':'🧵','Damaged or defective item':'🔧','Wrong item':'📦','Missing item':'📭','Late delivery':'⏰','Refund request':'💸','Cancellation request':'❌','Order or address modification request':'✏️','General product question or complaint':'💬','Chargeback or PayPal dispute':'⚖️','Other':'•'};
+function catSym(name){ for(const k of Object.keys(CAT_SYM)){ if(name&&name.toLowerCase().includes(k.toLowerCase().split(' ')[0])) return CAT_SYM[k]; } return '●'; }
 function topCat(rows){
   const cnt={};
   rows.forEach(r=>cnt[r.cat]=(cnt[r.cat]||0)+1);
@@ -2041,20 +2017,20 @@ function renderTab_daily(){
     const dr = (deptF==='all' ? data : data.filter(r=>getD(r.idx)===deptF)).filter(r=>r.date===day);
     const urg= dr.filter(r=>r.action==='URGENT').length;
     const tc = topCat(dr);
-    const dayFmt = new Date(day+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    const d2 = new Date(day+'T00:00:00');
+    const dayName = d2.toLocaleDateString('en-GB',{weekday:'short'});
+    const dayNum  = d2.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
     return `<div class="pc ${pcClass(dr.length)}${urg>0?' has-urg':''}" onclick="drillDay('${day}')">
       <div class="pc-head">
-        <div class="pc-lbl">${dayFmt}</div>
+        <div><div class="pc-lbl">${dayName} ${dayNum}</div></div>
         ${urg>0?`<span class="pc-badge">⚠️ ${urg}</span>`:''}
       </div>
       <div class="pc-body">
-        <div class="pc-fill">
-          <div class="pc-total">${dr.length}</div>
-          <div class="pc-sub">complaints</div>
-        </div>
+        <div class="pc-total">${dr.length}</div>
+        <div class="pc-sub">complaints</div>
       </div>
       <div class="pc-row">
-        ${tc?`<span class="pc-top">● ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db;font-style:italic">No complaints</span>`}
+        ${tc?`<span class="pc-top">${catSym(tc[0])} ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db">— none</span>`}
       </div>
     </div>`;
   }).join('');
@@ -2122,17 +2098,15 @@ function renderTab_weekly(){
       const prev  = prevWk ? data.filter(r=>r.date>=prevWk.start && r.date<=prevWk.end) : null;
       return `<div class="pc ${pcClass(wr.length)}${urg>0?' has-urg':''}" onclick="drillWeek('${wk.start}','${wk.end}','${wk.label}')">
         <div class="pc-head">
-          <div><div class="pc-lbl">${wk.label}</div><div class="pc-date">${fmt(wk.start)} – ${fmt(wk.end)}</div></div>
+          <div><div class="pc-lbl">${wk.label}</div><div class="pc-date">📅 ${fmt(wk.start)} – ${fmt(wk.end)}</div></div>
           ${urg>0?`<span class="pc-badge">⚠️ ${urg}${prev?deltaLabel(urg,prev.filter(r=>r.action==='URGENT').length):''}</span>`:''}
         </div>
         <div class="pc-body">
-          <div class="pc-fill">
-            <div class="pc-total">${wr.length}${prev?deltaLabel(wr.length,prev.length):''}</div>
-            <div class="pc-sub">complaints</div>
-          </div>
+          <div class="pc-total">${wr.length}${prev?deltaLabel(wr.length,prev.length):''}</div>
+          <div class="pc-sub">complaints</div>
         </div>
         <div class="pc-row">
-          ${tc?`<span class="pc-top">● ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db;font-style:italic">No complaints</span>`}
+          ${tc?`<span class="pc-top">${catSym(tc[0])} ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db">— none</span>`}
         </div>
       </div>`;
     }).join('');
@@ -2178,17 +2152,15 @@ function renderTab_monthly(){
       const tc  = topCat(mrf);
       return `<div class="pc ${pcClass(mrf.length)}${urg>0?' has-urg':''}" onclick="drillMonth('${ym}')">
         <div class="pc-head">
-          <div class="pc-lbl">${fmtMon(ym)}</div>
+          <div class="pc-lbl">📆 ${fmtMon(ym)}</div>
           ${urg>0?`<span class="pc-badge">⚠️ ${urg}</span>`:''}
         </div>
         <div class="pc-body">
-          <div class="pc-fill">
-            <div class="pc-total">${mrf.length}</div>
-            <div class="pc-sub">complaints</div>
-          </div>
+          <div class="pc-total">${mrf.length}</div>
+          <div class="pc-sub">complaints</div>
         </div>
         <div class="pc-row">
-          ${tc?`<span class="pc-top">● ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db;font-style:italic">No complaints</span>`}
+          ${tc?`<span class="pc-top">${catSym(tc[0])} ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db">— none</span>`}
         </div>
       </div>`;
     }).join('');
