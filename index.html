@@ -178,14 +178,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .pc-sub{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-top:5px;color:#6b7280}
 /* card footer */
 .pc-row{padding:8px 12px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.8);min-height:28px}
-/* review row */
-.pc-review{padding:7px 12px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;min-height:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pc-review.needs{background:#fff1f2;color:#be123c}
-.pc-review.needs:hover{background:#ffe4e6}
-.pc-review.done{background:#f0fdf4;color:#166534}
-.pc-review.done:hover{background:#dcfce7}
-[data-theme="dark"] .pc-review.needs{background:rgba(190,18,60,.18);color:#fda4af}
-[data-theme="dark"] .pc-review.done{background:rgba(22,101,52,.22);color:#86efac}
+/* status breakdown row on day cards */
+.pc-status-row{padding:7px 10px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:4px;flex-wrap:wrap;background:rgba(255,255,255,.85);min-height:30px}
+.pc-stat{display:inline-flex;align-items:center;gap:2px;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.pc-stat.s-new{background:#fee2e2;color:#991b1b}
+.pc-stat.s-ongoing{background:#fef3c7;color:#92400e}
+.pc-stat.s-resolved{background:#d1fae5;color:#065f46}
+.pc-stat.s-all{background:#d1fae5;color:#065f46}
+[data-theme="dark"] .pc-status-row{background:rgba(30,37,53,.8)}
+[data-theme="dark"] .pc-stat.s-new{background:rgba(153,27,27,.3);color:#fca5a5}
+[data-theme="dark"] .pc-stat.s-ongoing{background:rgba(146,64,14,.3);color:#fde68a}
+[data-theme="dark"] .pc-stat.s-resolved{background:rgba(6,95,70,.3);color:#6ee7b7}
 .pc-urg{font-size:10px;font-weight:700;color:#d97706;white-space:nowrap;flex-shrink:0}
 .pc-top{font-size:10px;color:#374151;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .delta{font-size:10px;font-weight:700;margin-top:4px}
@@ -777,6 +780,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <input type="date" class="date-in" id="daily-end">
     <button class="apply-btn" onclick="applyDaily()">Apply</button>
     <span style="font-size:11px;color:#9ca3af;margin-left:4px">Click any day card to drill into details</span>
+    <div id="presence-bar" style="display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0"></div>
   </div>
   <div class="cards-grid" id="daily-cards"></div>
   <div class="drilldown" id="dd-daily">
@@ -1176,7 +1180,7 @@ function getCL(i){
 
 // OVR_E: emailed status — keyed by order number string, value = timestamp string
 let OVR_E = {};
-let DAY_REVIEWS = {}; // { 'YYYY-MM-DD': 'Name @ HH:MM' } — synced via Google Sheet
+let ONLINE_USERS = {}; // { 'Name': timestamp_ms } — presence heartbeat
 try { OVR_E = JSON.parse(localStorage.getItem('ams_e') || '{}'); } catch(e){}
 function saveE(){ try{ localStorage.setItem('ams_e', JSON.stringify(OVR_E)); }catch(e){} }
 
@@ -1240,16 +1244,15 @@ function applyOverrideRows(rows){
   let changed = false;
   rows.forEach(ov=>{
     const orderKey = String(ov.OrderNumber||'').trim();
-    // Day review entries stored as _DR:YYYY-MM-DD — don't map to real orders
-    if(orderKey.startsWith('_DR:')){
-      const day = orderKey.slice(4);
-      const val = (ov.S||ov.C||'').trim();
-      if(val && val !== 'CLEAR') DAY_REVIEWS[day] = val;
-      else delete DAY_REVIEWS[day];
-      changed = true;
+    // Presence heartbeat entries stored as _P:Name
+    if(orderKey.startsWith('_P:')){
+      const name = orderKey.slice(3);
+      const ts = parseInt(ov.S||'0', 10);
+      if(name && ts) ONLINE_USERS[name] = ts;
+      renderPresence();
       return;
     }
-    const idx = orderToIdx[orderKey];
+const idx = orderToIdx[orderKey];
     if(idx !== undefined){
       if(ov.P && OVR_P[idx] !== ov.P){ OVR_P[idx] = ov.P; changed = true; }
       if(ov.S && OVR_S[idx] !== ov.S){ OVR_S[idx] = ov.S; changed = true; }
@@ -2002,23 +2005,39 @@ function applyDaily(){
   renderTab_daily();
 }
 
-function markDayReviewed(day, evt){
-  evt.stopPropagation();
-  const username = localStorage.getItem('ams_username') || 'Team';
-  const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  const val = username + ' @ ' + now;
-  DAY_REVIEWS[day] = val;
-  pushOverride('_DR:' + day, 'S', val);
-  renderTab_daily();
+// ── Live Presence ──────────────────────────────────────────────
+const PRESENCE_ACTIVE = 3 * 60 * 1000;  // green dot: seen within 3 min
+const PRESENCE_STALE  = 10 * 60 * 1000; // grey dot: seen within 10 min
+
+const _presenceColors = ['#6366f1','#0891b2','#059669','#d97706','#7c3aed','#db2777','#0284c7'];
+function _nameColor(n){ return _presenceColors[n.split('').reduce((a,c)=>a+c.charCodeAt(0),0) % _presenceColors.length]; }
+
+function pushPresence(){
+  const username = localStorage.getItem('ams_username');
+  if(!username || !APPS_SCRIPT_URL) return;
+  ONLINE_USERS[username] = Date.now();
+  pushOverride('_P:' + username, 'S', String(Date.now()));
+  renderPresence();
 }
 
-function unmarkDayReviewed(day, evt){
-  evt.stopPropagation();
-  if(!confirm('Remove the "Reviewed" mark for this day?')) return;
-  delete DAY_REVIEWS[day];
-  pushOverride('_DR:' + day, 'S', 'CLEAR');
-  renderTab_daily();
+function renderPresence(){
+  const el = document.getElementById('presence-bar');
+  if(!el) return;
+  const now = Date.now();
+  const active = Object.entries(ONLINE_USERS)
+    .filter(([,ts]) => now - Number(ts) < PRESENCE_STALE)
+    .sort(([,a],[,b]) => Number(b) - Number(a));
+  if(!active.length){ el.innerHTML = '<span style="font-size:10px;color:#9ca3af">No teammates online</span>'; return; }
+  el.innerHTML = '<span style="font-size:10px;font-weight:700;color:#6b7280;margin-right:2px">🟢 Online:</span>'
+    + active.map(([name, ts])=>{
+      const ago = now - Number(ts);
+      const isActive = ago < PRESENCE_ACTIVE;
+      const initials = name.slice(0,2).toUpperCase();
+      const label = isActive ? name + ' · active now' : name + ' · ' + Math.round(ago/60000) + 'm ago';
+      return `<div style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${_nameColor(name)};color:white;font-size:10px;font-weight:800;cursor:default;flex-shrink:0;border:2px solid ${isActive?'#22c55e':'#f59e0b'}" title="${label}">${initials}<span style="position:absolute;bottom:-1px;right:-1px;width:9px;height:9px;border-radius:50%;background:${isActive?'#22c55e':'#f59e0b'};border:2px solid white"></span></div>`;
+    }).join('');
 }
+
 
 function renderTab_daily(){
   // Auto-correct: if current range has no data (e.g. default "last 7 days" has no records),
@@ -2056,7 +2075,10 @@ function renderTab_daily(){
     const d2 = new Date(day+'T00:00:00');
     const dayName = d2.toLocaleDateString('en-GB',{weekday:'short'});
     const dayNum  = d2.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
-    const rev = DAY_REVIEWS[day];
+    const nNew      = dr.filter(r=>getS(r.idx)==='New').length;
+    const nOngoing  = dr.filter(r=>getS(r.idx)==='Ongoing').length;
+    const nResolved = dr.filter(r=>getS(r.idx)==='Resolved').length;
+    const allDone   = dr.length>0 && nNew===0 && nOngoing===0;
     return `<div class="pc ${pcClass(dr.length)}${urg>0?' has-urg':''}" onclick="drillDay('${day}')">
       <div class="pc-head">
         <div><div class="pc-lbl">${dayName} ${dayNum}</div></div>
@@ -2069,8 +2091,12 @@ function renderTab_daily(){
       <div class="pc-row">
         ${tc?`<span class="pc-top">${catSym(tc[0])} ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db">— none</span>`}
       </div>
-      ${dr.length>0?`<div class="pc-review ${rev?'done':'needs'}" onclick="${rev?`unmarkDayReviewed('${day}',event)`:`markDayReviewed('${day}',event)`}" title="${rev?'Click to remove reviewed mark':'Click to mark all entries as reviewed'}">
-        ${rev?`✅ ${rev}`:`👁 Needs review`}
+      ${dr.length>0?`<div class="pc-status-row">
+        ${allDone?`<span class="pc-stat s-all">✅ All resolved</span>`:`
+          ${nNew>0?`<span class="pc-stat s-new">🔴 ${nNew} pending</span>`:''}
+          ${nOngoing>0?`<span class="pc-stat s-ongoing">🟡 ${nOngoing} ongoing</span>`:''}
+          ${nResolved>0?`<span class="pc-stat s-resolved">✅ ${nResolved} resolved</span>`:''}
+        `}
       </div>`:''}
     </div>`;
   }).join('');
@@ -3600,6 +3626,7 @@ function saveName(){
   localStorage.setItem('ams_username', n);
   document.getElementById('nameModal').style.display='none';
   updateNameDisplay();
+  pushPresence(); // announce immediately after setting name
 }
 function changeName(){
   const m = document.getElementById('nameModal');
@@ -3633,6 +3660,8 @@ function changeName(){
   setTimeout(()=>{
     renderTab('today');
     initUserName();
+    pushPresence(); // announce yourself as online
+    setInterval(pushPresence, 60000); // heartbeat every 60s so teammates see you're still active
     // Force charts to recalculate dimensions after layout settles
     requestAnimationFrame(()=>{
       Object.values(_ovCharts).forEach(c=>{ try{ c.resize(); }catch(e){} });
