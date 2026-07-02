@@ -181,6 +181,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* status breakdown row on day cards */
 .pc-status-row{padding:7px 10px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:4px;flex-wrap:wrap;background:rgba(255,255,255,.85);min-height:30px}
 .pc-stat{display:inline-flex;align-items:center;gap:2px;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.pc-stat.s-new,.pc-stat.s-ongoing,.pc-stat.s-resolved{cursor:pointer;transition:filter .12s,transform .12s}
+.pc-stat.s-new:hover,.pc-stat.s-ongoing:hover,.pc-stat.s-resolved:hover{filter:brightness(0.93);transform:translateY(-1px)}
 .pc-stat.s-new{background:#fee2e2;color:#991b1b}
 .pc-stat.s-ongoing{background:#fef3c7;color:#92400e}
 .pc-stat.s-resolved{background:#d1fae5;color:#065f46}
@@ -1440,6 +1442,12 @@ function getP(i){ return OVR_P[i] ?? P_DEFAULT[raw[i].action] ?? 'Low'; }
 function getS(i){ return OVR_S[i] ?? raw[i]?.status ?? 'New'; }
 function getD(i){ return OVR_D[i] ?? raw[i]?.dept ?? ''; }
 function getA(i){ return OVR_A[i] ?? raw[i]?.action ?? 'Log'; }
+// An item is "handled" once it's marked Resolved — from then on it no longer
+// counts as Urgent or Action Required anywhere in the dashboard, so the team
+// can see at a glance which flagged items are actually still outstanding.
+function isHandled(i){ return getS(i)==='Resolved'; }
+function isUrgent(i){ return !isHandled(i) && getA(i)==='URGENT'; }
+function needsAttn(i){ return !isHandled(i) && NEEDS_ATT.has(getA(i)) && !OVR_E[String(raw[i]?.order||'').trim()]; }
 
 
 // Per-tab filter state
@@ -1531,10 +1539,10 @@ function applyFilters(rows, tab){
   const f = FS[tab];
   const q = (document.getElementById('srch-'+tab)||{}).value?.toLowerCase().trim()||'';
   return rows.filter(r=>{
-    if(f.attn && !NEEDS_ATT.has(r.action)) return false;
+    if(f.attn && !needsAttn(r.idx)) return false;
     if(f.dept!=='all' && getD(r.idx)!==f.dept) return false;
     if(f.priority!=='all' && getP(r.idx)!==f.priority) return false;
-    if(f.action!=='all' && r.action!==f.action) return false;
+    if(f.action!=='all' && getA(r.idx)!==f.action) return false;
     if(f.status!=='all' && getS(r.idx)!==f.status) return false;
     if(f.cat && f.cat!=='all' && r.cat!==f.cat) return false;
     if(q && !(r.order+' '+r.issue+' '+r.cat+' '+r.dept).toLowerCase().includes(q)) return false;
@@ -1547,9 +1555,9 @@ function applyFilters(rows, tab){
 // ═══════════════════════════════════════════════════════════
 function renderSidebar(rows, periodLabel){
   const total = rows.length;
-  const urg   = rows.filter(r=>r.action==='URGENT').length;
-  // Emailed orders are handled — exclude from Action Required
-  const attn  = rows.filter(r=>NEEDS_ATT.has(r.action) && !OVR_E[String(r.order||'').trim()]).length;
+  const urg   = rows.filter(r=>isUrgent(r.idx)).length;
+  // Resolved or emailed orders are handled — exclude from Action Required
+  const attn  = rows.filter(r=>needsAttn(r.idx)).length;
   const bd    = {'Store Manager':0,'CS':0,'Supply Chain':0,'PayPal':0};
   rows.forEach(r=>{ const d=getD(r.idx); if(bd[d]!==undefined) bd[d]++; });
 
@@ -1591,8 +1599,8 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
   const empty = document.getElementById(emptyId);
   const meta  = metaId ? document.getElementById(metaId) : null;
   const total = rows.length;
-  const urg   = rows.filter(r=>r.action==='URGENT').length;
-  const attn  = rows.filter(r=>NEEDS_ATT.has(r.action)).length;
+  const urg   = rows.filter(r=>isUrgent(r.idx)).length;
+  const attn  = rows.filter(r=>needsAttn(r.idx)).length;
 
   if(meta){
     let m = `Showing <strong>${total}</strong> item${total!==1?'s':''}`;
@@ -1618,7 +1626,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
     });
   } else {
     sorted = [...rows].sort((a,b)=>{
-      const pa=a.action==='URGENT'?0:1, pb=b.action==='URGENT'?0:1;
+      const pa=isUrgent(a.idx)?0:1, pb=isUrgent(b.idx)?0:1;
       if(pa!==pb) return pa-pb;
       return b.date.localeCompare(a.date);
     });
@@ -1626,7 +1634,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
 
   tbody.innerHTML = sorted.map(r=>{
     const s = getS(r.idx), p = getP(r.idx), a = getA(r.idx);
-    const isUrg = a==='URGENT';
+    const isUrg = isUrgent(r.idx);
     const isRes = s==='Resolved';
     const emailedStamp = OVR_E[String(r.order||'').trim()] || '';
     const dateCol = showDate ? `<td class="col-date">${fmt(r.date)}</td>` : '';
@@ -1785,8 +1793,8 @@ function renderTab_today(){
   document.getElementById('ovw-period-sub').textContent = mRows.length+' complaints logged this month';
 
   // KPI cards
-  const urg    = mRows.filter(r=>getA(r.idx)==='URGENT').length;
-  const attn   = mRows.filter(r=>NEEDS_ATT.has(getA(r.idx))).length;
+  const urg    = mRows.filter(r=>isUrgent(r.idx)).length;
+  const attn   = mRows.filter(r=>needsAttn(r.idx)).length;
   const res    = mRows.filter(r=>getS(r.idx)==='Resolved').length;
   const resPct = mRows.length ? Math.round(res/mRows.length*100) : 0;
   const todayRows = data.filter(r=>r.date===TODAY);
@@ -1958,7 +1966,7 @@ function renderTab_today(){
   document.getElementById('ovw-recent-tbody').innerHTML = recent.map(r=>{
     const s=getS(r.idx), a=getA(r.idx);
     const aCss = a==='No Action'?'a-NoAction':'a-'+a;
-    return `<tr data-idx="${r.idx}" class="${a==='URGENT'?'row-urg':''}${s==='Resolved'?' row-resolved':''}">
+    return `<tr data-idx="${r.idx}" class="${isUrgent(r.idx)?'row-urg':''}${s==='Resolved'?' row-resolved':''}">
       <td class="col-order">${r.order}</td>
       <td>${fmt(r.date)}</td>
       <td>${catBadge(r.cat)}</td>
@@ -2070,7 +2078,7 @@ function renderTab_daily(){
   const grid = document.getElementById('daily-cards');
   grid.innerHTML = days.map(day=>{
     const dr = (deptF==='all' ? data : data.filter(r=>getD(r.idx)===deptF)).filter(r=>r.date===day);
-    const urg= dr.filter(r=>r.action==='URGENT').length;
+    const urg= dr.filter(r=>isUrgent(r.idx)).length;
     const tc = topCat(dr);
     const d2 = new Date(day+'T00:00:00');
     const dayName = d2.toLocaleDateString('en-GB',{weekday:'short'});
@@ -2093,9 +2101,9 @@ function renderTab_daily(){
       </div>
       ${dr.length>0?`<div class="pc-status-row">
         ${allDone?`<span class="pc-stat s-all">✅ All resolved</span>`:`
-          ${nNew>0?`<span class="pc-stat s-new">🔴 ${nNew} pending</span>`:''}
-          ${nOngoing>0?`<span class="pc-stat s-ongoing">🟡 ${nOngoing} ongoing</span>`:''}
-          ${nResolved>0?`<span class="pc-stat s-resolved">✅ ${nResolved} resolved</span>`:''}
+          ${nNew>0?`<span class="pc-stat s-new" onclick="event.stopPropagation();drillDay('${day}','New')" title="Show only pending items for this day">🔴 ${nNew} pending</span>`:''}
+          ${nOngoing>0?`<span class="pc-stat s-ongoing" onclick="event.stopPropagation();drillDay('${day}','Ongoing')" title="Show only ongoing items for this day">🟡 ${nOngoing} ongoing</span>`:''}
+          ${nResolved>0?`<span class="pc-stat s-resolved" onclick="event.stopPropagation();drillDay('${day}','Resolved')" title="Show only resolved items for this day">✅ ${nResolved} resolved</span>`:''}
         `}
       </div>`:''}
     </div>`;
@@ -2106,11 +2114,20 @@ function renderTab_daily(){
   setTimeout(()=>{ renderSidebar(filteredRange, fmt(dailyStart)+' – '+fmt(dailyEnd)); }, 0);
 }
 
-function drillDay(day){
+function drillDay(day, status){
   document.querySelectorAll('#pane-daily .pc').forEach(c=>c.classList.remove('sel'));
   document.querySelectorAll('#pane-daily .pc').forEach(c=>{ if(c.querySelector('.pc-lbl') && c.getAttribute('onclick')===`drillDay('${day}')`) c.classList.add('sel'); });
   drillRows.daily = data.filter(r=>r.date===day);
-  document.getElementById('dd-daily-title').textContent = fmtLong(day)+' — '+drillRows.daily.length+' items';
+  FS.daily.status = status || 'all';
+  // Keep the Status filter pills in the drilldown filter bar in sync with the click
+  document.querySelectorAll('#dd-daily-fbar .fgroup-pills .fb').forEach(b=>{
+    const oc = b.getAttribute('onclick')||'';
+    if(!oc.includes("setF('daily','status'")) return;
+    const m = oc.match(/setF\('daily','status','([^']+)'/);
+    b.classList.toggle('active', !!m && m[1]===(status||'all'));
+  });
+  const statusLbl = status ? ` · ${status} only` : '';
+  document.getElementById('dd-daily-title').textContent = fmtLong(day)+' — '+drillRows.daily.length+' items'+statusLbl;
   document.getElementById('dd-daily').classList.add('open');
   renderDrillTable('daily');
 }
@@ -2158,14 +2175,14 @@ function renderTab_weekly(){
     // Cards view
     const grid = [...weeks].reverse().map((wk,i)=>{
       const wr    = data.filter(r=>r.date>=wk.start && r.date<=wk.end && filterW(r));
-      const urg   = wr.filter(r=>r.action==='URGENT').length;
+      const urg   = wr.filter(r=>isUrgent(r.idx)).length;
       const tc    = topCat(wr);
       const prevWk = prevWeeks[weeks.length-1-i];
       const prev  = prevWk ? data.filter(r=>r.date>=prevWk.start && r.date<=prevWk.end) : null;
       return `<div class="pc ${pcClass(wr.length)}${urg>0?' has-urg':''}" onclick="drillWeek('${wk.start}','${wk.end}','${wk.label}')">
         <div class="pc-head">
           <div><div class="pc-lbl">${wk.label}</div><div class="pc-date">📅 ${fmt(wk.start)} – ${fmt(wk.end)}</div></div>
-          ${urg>0?`<span class="pc-badge">⚠️ ${urg}${prev?deltaLabel(urg,prev.filter(r=>r.action==='URGENT').length):''}</span>`:''}
+          ${urg>0?`<span class="pc-badge">⚠️ ${urg}${prev?deltaLabel(urg,prev.filter(r=>isUrgent(r.idx)).length):''}</span>`:''}
         </div>
         <div class="pc-body">
           <div class="pc-total">${wr.length}${prev?deltaLabel(wr.length,prev.length):''}</div>
@@ -2214,7 +2231,7 @@ function renderTab_monthly(){
   } else {
     const grid = months.map(([ym,mr])=>{
       const mrf = mr.filter(filterM);
-      const urg = mrf.filter(r=>r.action==='URGENT').length;
+      const urg = mrf.filter(r=>isUrgent(r.idx)).length;
       const tc  = topCat(mrf);
       return `<div class="pc ${pcClass(mrf.length)}${urg>0?' has-urg':''}" onclick="drillMonth('${ym}')">
         <div class="pc-head">
@@ -2248,8 +2265,8 @@ function drillMonth(ym){
 // ═══════════════════════════════════════════════════════════
 function renderComparePanel(currRows, prevRows, currLabel, prevLabel){
   function stats(rows){
-    const urg  = rows.filter(r=>r.action==='URGENT').length;
-    const attn = rows.filter(r=>NEEDS_ATT.has(r.action)).length;
+    const urg  = rows.filter(r=>isUrgent(r.idx)).length;
+    const attn = rows.filter(r=>needsAttn(r.idx)).length;
     const bd   = {'Store Manager':0,'CS':0,'Supply Chain':0,'PayPal':0};
     rows.forEach(r=>{ if(bd[r.dept]!==undefined) bd[r.dept]++; });
     const tc = topCat(rows);
@@ -2569,7 +2586,7 @@ function renderTab_trends(){
   const lastM  = data.filter(r=>r.date.startsWith(lastMonthKey));
   const resolved = data.filter(r=>getS(r.idx)==='Resolved').length;
   const resolvedPct = data.length ? Math.round(resolved/data.length*100) : 0;
-  const urgent = data.filter(r=>getA(r.idx)==='URGENT').length;
+  const urgent = data.filter(r=>isUrgent(r.idx)).length;
   const avg30  = (()=>{
     const from=addDaysT(TODAY,-29);
     const r30=data.filter(r=>r.date>=from&&r.date<=TODAY);
@@ -2619,7 +2636,7 @@ function renderTab_trends(){
   const days30=[]; for(let i=29;i>=0;i--) days30.push(addDaysT(TODAY,-i));
   const dayCnt = cnt(data.filter(r=>r.date>=days30[0]).map(r=>r.date));
   const urgDayCnt = {};
-  data.filter(r=>r.date>=days30[0]&&getA(r.idx)==='URGENT').forEach(r=>urgDayCnt[r.date]=(urgDayCnt[r.date]||0)+1);
+  data.filter(r=>r.date>=days30[0]&&isUrgent(r.idx)).forEach(r=>urgDayCnt[r.date]=(urgDayCnt[r.date]||0)+1);
   _charts.timeline = new Chart(document.getElementById('ch-timeline'),{
     type:'line',
     data:{
@@ -2706,7 +2723,7 @@ function renderTab_trends(){
   for(let i=7;i>=0;i--){ const s=addDaysT(wMon,-i*7); weeks8.push({s,e:addDaysT(s,6)}); }
   const wLabels=weeks8.map(w=>{ const d=new Date(w.s+'T00:00:00'); return 'Wk '+d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); });
   const wData  =weeks8.map(w=>data.filter(r=>r.date>=w.s&&r.date<=w.e).length);
-  const wUrgData=weeks8.map(w=>data.filter(r=>r.date>=w.s&&r.date<=w.e&&getA(r.idx)==='URGENT').length);
+  const wUrgData=weeks8.map(w=>data.filter(r=>r.date>=w.s&&r.date<=w.e&&isUrgent(r.idx)).length);
   _charts.weekly = new Chart(document.getElementById('ch-weekly'),{
     type:'bar',
     data:{ labels:wLabels,
@@ -2871,17 +2888,19 @@ function renderTabBadges(){
   const sets = {today:todayRows, daily:dailyRows, weekly:weeklyRows, monthly:monthlyRows, all:data};
   ['today','daily','weekly','monthly','all'].forEach(t=>{
     const rows = sets[t];
-    const urg  = rows.filter(r=>r.action==='URGENT').length;
+    const urg  = rows.filter(r=>isUrgent(r.idx)).length;
     document.getElementById('bdg-'+t).textContent  = rows.length;
     document.getElementById('dot-'+t).style.display = urg?'block':'none';
   });
 
-  const allUrg = data.filter(r=>r.action==='URGENT').length;
+  const allUrg = data.filter(r=>isUrgent(r.idx)).length;
   const pill   = document.getElementById('hdrPill');
   document.getElementById('hdrPillN').textContent = allUrg;
   pill.style.display = allUrg ? 'flex' : 'none';
-  const nowStr = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Amsterdam'});
-  document.getElementById('hdrMeta').textContent = `Last updated: ${nowStr} (NL) · ${data.length} total entries`;
+  const _now = new Date();
+  const nlStr = _now.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Amsterdam'});
+  const phStr = _now.toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Manila'});
+  document.getElementById('hdrMeta').textContent = `Last updated: ${nlStr} (NL) · ${phStr} (PH) · ${data.length} total entries`;
 }
 
 // ═══════════════════════════════════════════════════════════
