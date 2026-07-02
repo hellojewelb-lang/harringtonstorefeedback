@@ -8,6 +8,19 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 .col-comment{min-width:200px;max-width:280px}
+.col-nextaction{min-width:180px;max-width:260px;font-size:11.5px;color:#374151;line-height:1.4}
+.owner-inp{width:100%;margin-top:4px;font-size:10.5px;padding:3px 6px;border:1px solid #e5e7eb;border-radius:6px;color:#374151;background:#f9fafb;outline:none;font-family:inherit}
+.owner-inp:focus{border-color:#6366f1;background:#fff}
+[data-theme="dark"] .owner-inp{background:#252c3f;border-color:#3a4560;color:#e5eaf3}
+.wait-since{font-size:10px;color:#c2410c;font-weight:700;margin-top:3px}
+[data-theme="dark"] .wait-since{color:#fdba74}
+.bulk-bar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 16px;border-radius:12px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:1000;font-size:12px}
+.bulk-bar .bulk-count{font-weight:700;white-space:nowrap;padding-right:4px}
+.bulk-bar select{border-radius:8px;border:1px solid #3a3a55;background:#252540;color:#fff;padding:5px 8px;font-size:12px;outline:none}
+.bulk-bar .bulk-clear{border:1px solid #3a3a55;background:transparent;color:#fca5a5;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+.bulk-bar .bulk-clear:hover{background:#3a1a1a}
+.col-nextaction .na-empty{color:#c1c7d0;font-style:italic}
+[data-theme="dark"] .col-nextaction{color:#c9d3e2}
 .comment-inp{width:100%;font-size:11px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;color:#374151;background:#f9fafb;outline:none;font-family:inherit;transition:border-color .15s,background .15s;min-height:64px;resize:vertical;line-height:1.5;display:block}
 .comment-inp:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 2px rgba(99,102,241,.12)}
 .comment-inp::placeholder{color:#9ca3af}
@@ -130,6 +143,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .fb.fp-Medium.active{background:#d97706;border-color:#d97706}
 .fb.fp-Low.active{background:#6b7280;border-color:#6b7280}
 .fb.fs-New.active{background:#1d4ed8;border-color:#1d4ed8}
+.fb.fs-WaitSupplier.active{background:#c2410c;border-color:#c2410c}
+.fb.fs-WaitCustomer.active{background:#6d28d9;border-color:#6d28d9}
 .fb.fs-Ongoing.active{background:#b45309;border-color:#b45309}
 .fb.fs-Resolved.active{background:#065f46;border-color:#065f46}
 
@@ -181,14 +196,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* status breakdown row on day cards */
 .pc-status-row{padding:7px 10px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:4px;flex-wrap:wrap;background:rgba(255,255,255,.85);min-height:30px}
 .pc-stat{display:inline-flex;align-items:center;gap:2px;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:10px;white-space:nowrap}
-.pc-stat.s-new,.pc-stat.s-ongoing,.pc-stat.s-resolved{cursor:pointer;transition:filter .12s,transform .12s}
-.pc-stat.s-new:hover,.pc-stat.s-ongoing:hover,.pc-stat.s-resolved:hover{filter:brightness(0.93);transform:translateY(-1px)}
+.pc-stat.s-new,.pc-stat.s-waitsupplier,.pc-stat.s-waitcustomer,.pc-stat.s-ongoing,.pc-stat.s-resolved{cursor:pointer;transition:filter .12s,transform .12s}
+.pc-stat.s-new:hover,.pc-stat.s-waitsupplier:hover,.pc-stat.s-waitcustomer:hover,.pc-stat.s-ongoing:hover,.pc-stat.s-resolved:hover{filter:brightness(0.93);transform:translateY(-1px)}
 .pc-stat.s-new{background:#fee2e2;color:#991b1b}
+.pc-stat.s-waitsupplier{background:#ffedd5;color:#9a3412}
+.pc-stat.s-waitcustomer{background:#ede9fe;color:#5b21b6}
 .pc-stat.s-ongoing{background:#fef3c7;color:#92400e}
 .pc-stat.s-resolved{background:#d1fae5;color:#065f46}
 .pc-stat.s-all{background:#d1fae5;color:#065f46}
 [data-theme="dark"] .pc-status-row{background:rgba(30,37,53,.8)}
 [data-theme="dark"] .pc-stat.s-new{background:rgba(153,27,27,.3);color:#fca5a5}
+[data-theme="dark"] .pc-stat.s-waitsupplier{background:rgba(154,52,18,.3);color:#fdba74}
+[data-theme="dark"] .pc-stat.s-waitcustomer{background:rgba(91,33,182,.3);color:#c4b5fd}
 [data-theme="dark"] .pc-stat.s-ongoing{background:rgba(146,64,14,.3);color:#fde68a}
 [data-theme="dark"] .pc-stat.s-resolved{background:rgba(6,95,70,.3);color:#6ee7b7}
 .pc-urg{font-size:10px;font-weight:700;color:#d97706;white-space:nowrap;flex-shrink:0}
@@ -286,6 +305,8 @@ tbody tr.row-resolved .col-order{text-decoration:line-through;color:#9ca3af !imp
 .p-Medium{background-color:#fef3c7;color:#d97706}
 .p-Low{background-color:#f3f4f6;color:#6b7280}
 .s-New{background-color:#dbeafe;color:#1d4ed8}
+.s-WaitSupplier{background-color:#ffedd5;color:#c2410c}
+.s-WaitCustomer{background-color:#ede9fe;color:#6d28d9}
 .s-Ongoing{background-color:#fef3c7;color:#b45309}
 .s-Resolved{background-color:#d1fae5;color:#065f46}
 
@@ -355,6 +376,8 @@ tbody tr.row-resolved .col-order{text-decoration:line-through;color:#9ca3af !imp
 .ovw-recent-tbl tr:last-child td{border-bottom:none}
 .ovw-recent-tbl tr:hover td{background:#fafbff}
 .s-New{background:#dbeafe;color:#1d4ed8}
+.s-WaitSupplier{background:#ffedd5;color:#c2410c}
+.s-WaitCustomer{background:#ede9fe;color:#6d28d9}
 .s-Ongoing{background:#fef3c7;color:#b45309}
 .s-Resolved{background:#d1fae5;color:#065f46}
 
@@ -520,6 +543,8 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
 [data-theme="dark"] .sel-a.a-NoAction{background-color:#333d54;color:#b8c8da;border-color:#445068}
 /* Status */
 [data-theme="dark"] .sel-s.s-New{background-color:#1a2e5a;color:#93c5fd;border-color:#2a4a8a}
+[data-theme="dark"] .sel-s.s-WaitSupplier{background-color:#4a2410;color:#fdba74;border-color:#7a4020}
+[data-theme="dark"] .sel-s.s-WaitCustomer{background-color:#341a5a;color:#c4b5fd;border-color:#553590}
 [data-theme="dark"] .sel-s.s-Ongoing{background-color:#4a3a10;color:#fcd34d;border-color:#7a6020}
 [data-theme="dark"] .sel-s.s-Resolved{background-color:#1a3828;color:#6ee7b7;border-color:#256040}
 /* Dept */
@@ -822,6 +847,8 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
         <div class="fgroup-pills">
           <button class="fb active" onclick="setF('daily','status','all',this)">All</button>
           <button class="fb fs-New" onclick="setF('daily','status','New',this)">New</button>
+          <button class="fb fs-WaitSupplier" onclick="setF('daily','status','Waiting on Supplier',this)">Wait: Supplier</button>
+          <button class="fb fs-WaitCustomer" onclick="setF('daily','status','Waiting on Customer',this)">Wait: Customer</button>
           <button class="fb fs-Ongoing" onclick="setF('daily','status','Ongoing',this)">Ongoing</button>
           <button class="fb fs-Resolved" onclick="setF('daily','status','Resolved',this)">Resolved</button>
         </div>
@@ -842,7 +869,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-daily" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-daily" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-daily"><tr><th class="sortable" data-col="order" onclick="sortTbl('order','daily')">Order</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','daily')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','daily')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','daily')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','daily')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','daily')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','daily')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-daily"></tbody></table>
+    <table><thead id="thead-daily"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('daily',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','daily')">Order</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','daily')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','daily')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','daily')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','daily')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','daily')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','daily')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-daily"</tbody></table>
     <div class="empty-st" id="empty-daily" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -897,6 +924,8 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
         <div class="fgroup-pills">
           <button class="fb active" onclick="setF('weekly','status','all',this)">All</button>
           <button class="fb fs-New" onclick="setF('weekly','status','New',this)">New</button>
+          <button class="fb fs-WaitSupplier" onclick="setF('weekly','status','Waiting on Supplier',this)">Wait: Supplier</button>
+          <button class="fb fs-WaitCustomer" onclick="setF('weekly','status','Waiting on Customer',this)">Wait: Customer</button>
           <button class="fb fs-Ongoing" onclick="setF('weekly','status','Ongoing',this)">Ongoing</button>
           <button class="fb fs-Resolved" onclick="setF('weekly','status','Resolved',this)">Resolved</button>
         </div>
@@ -917,7 +946,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-weekly" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-weekly" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-weekly"><tr><th class="sortable" data-col="order" onclick="sortTbl('order','weekly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','weekly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','weekly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','weekly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','weekly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','weekly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','weekly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','weekly')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-weekly"></tbody></table>
+    <table><thead id="thead-weekly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('weekly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','weekly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','weekly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','weekly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','weekly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','weekly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','weekly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','weekly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','weekly')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-weekly"</tbody></table>
     <div class="empty-st" id="empty-weekly" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -957,6 +986,8 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
         <div class="fgroup-pills">
           <button class="fb active" onclick="setF('monthly','status','all',this)">All</button>
           <button class="fb fs-New" onclick="setF('monthly','status','New',this)">New</button>
+          <button class="fb fs-WaitSupplier" onclick="setF('monthly','status','Waiting on Supplier',this)">Wait: Supplier</button>
+          <button class="fb fs-WaitCustomer" onclick="setF('monthly','status','Waiting on Customer',this)">Wait: Customer</button>
           <button class="fb fs-Ongoing" onclick="setF('monthly','status','Ongoing',this)">Ongoing</button>
           <button class="fb fs-Resolved" onclick="setF('monthly','status','Resolved',this)">Resolved</button>
         </div>
@@ -977,7 +1008,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-monthly" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-monthly" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-monthly"><tr><th class="sortable" data-col="order" onclick="sortTbl('order','monthly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','monthly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','monthly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','monthly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','monthly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','monthly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','monthly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','monthly')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-monthly"></tbody></table>
+    <table><thead id="thead-monthly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('monthly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','monthly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','monthly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','monthly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','monthly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','monthly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','monthly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','monthly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','monthly')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-monthly"</tbody></table>
     <div class="empty-st" id="empty-monthly" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -1015,6 +1046,8 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
       <div class="fgroup-pills">
         <button class="fb active" onclick="setF('all','status','all',this)">All</button>
         <button class="fb fs-New" onclick="setF('all','status','New',this)">New</button>
+        <button class="fb fs-WaitSupplier" onclick="setF('all','status','Waiting on Supplier',this)">Wait: Supplier</button>
+        <button class="fb fs-WaitCustomer" onclick="setF('all','status','Waiting on Customer',this)">Wait: Customer</button>
         <button class="fb fs-Ongoing" onclick="setF('all','status','Ongoing',this)">Ongoing</button>
         <button class="fb fs-Resolved" onclick="setF('all','status','Resolved',this)">Resolved</button>
       </div>
@@ -1043,7 +1076,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   <div class="rmeta" id="meta-all"></div>
   <div id="chart-all"></div>
   <div class="tbl-wrap">
-    <table><thead><tr><th class="sortable" data-col="order" onclick="sortTbl('order','all')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','all')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','all')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','all')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','all')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','all')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','all')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','all')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-all"></tbody></table>
+    <table><thead><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('all',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','all')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','all')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','all')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','all')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','all')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','all')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','all')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','all')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-all"</tbody></table>
     <div class="empty-st" id="empty-all" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Try adjusting filters</div></div>
   </div>
 </div>
@@ -1077,6 +1110,12 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
         <div class="chart-title">Complaints by Department</div>
         <div class="chart-sub">Who owns the most open items?</div>
         <div class="chart-canvas-wrap"><canvas id="ch-dept" height="200"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Complaints by Supplier</div>
+        <div class="chart-sub">Which suppliers show up repeatedly across complaints?</div>
+        <div class="chart-canvas-wrap"><canvas id="ch-supplier" height="200"></canvas></div>
+        <div class="chart-sub" id="tr-insight-supplier" style="margin-top:8px;font-weight:600"></div>
       </div>
       <div class="chart-card">
         <div class="chart-title">Action Required Breakdown</div>
@@ -1157,15 +1196,26 @@ const P_DEFAULT  = {URGENT:'Critical',Email:'High',Confirm:'High',Log:'Medium','
 // STATE
 // ═══════════════════════════════════════════════════════════
 // Overrides stored in localStorage
-let OVR_P = {}, OVR_S = {}, OVR_A = {}, OVR_D = {}, OVR_C = {};
-try { OVR_P = JSON.parse(localStorage.getItem('ams_p') || '{}'); OVR_S = JSON.parse(localStorage.getItem('ams_s') || '{}'); OVR_A = JSON.parse(localStorage.getItem('ams_a') || '{}'); OVR_D = JSON.parse(localStorage.getItem('ams_d') || '{}'); OVR_C = JSON.parse(localStorage.getItem('ams_c') || '{}'); } catch(e){}
+let OVR_P = {}, OVR_S = {}, OVR_A = {}, OVR_D = {}, OVR_C = {}, OVR_OWN = {};
+try { OVR_P = JSON.parse(localStorage.getItem('ams_p') || '{}'); OVR_S = JSON.parse(localStorage.getItem('ams_s') || '{}'); OVR_A = JSON.parse(localStorage.getItem('ams_a') || '{}'); OVR_D = JSON.parse(localStorage.getItem('ams_d') || '{}'); OVR_C = JSON.parse(localStorage.getItem('ams_c') || '{}'); OVR_OWN = JSON.parse(localStorage.getItem('ams_own') || '{}'); } catch(e){}
 
 function saveP(){ try{ localStorage.setItem('ams_p', JSON.stringify(OVR_P)); }catch(e){} }
 function saveS(){ try{ localStorage.setItem('ams_s', JSON.stringify(OVR_S)); }catch(e){} }
 function saveA(){ try{ localStorage.setItem('ams_a', JSON.stringify(OVR_A)); }catch(e){} }
 function saveD(){ try{ localStorage.setItem('ams_d', JSON.stringify(OVR_D)); }catch(e){} }
 function saveC(){ try{ localStorage.setItem('ams_c', JSON.stringify(OVR_C)); }catch(e){} }
+function saveOwn(){ try{ localStorage.setItem('ams_own', JSON.stringify(OVR_OWN)); }catch(e){} }
 function getC(i){ return OVR_C[i] ?? ''; }
+// Owner/assignee — who on the team is handling this item. Synced via the same
+// override channel as Comment; requires the Apps Script 'O' field to fully
+// sync across teammates (falls back to local-only until that's deployed).
+function getOwn(i){ return OVR_OWN[i] ?? raw[i]?.owner ?? ''; }
+function chgOwn(idx, el){
+  const val = el.value.trim();
+  if(val) OVR_OWN[idx] = val; else delete OVR_OWN[idx];
+  saveOwn();
+  pushOverride(raw[idx]?.order, 'O', val);
+}
 // Comment log: full history of who updated and when — array of "Name · Date Time" strings per idx
 let OVR_CL = {};
 try { OVR_CL = JSON.parse(localStorage.getItem('ams_cl') || '{}'); } catch(e){}
@@ -1173,6 +1223,17 @@ function saveCL(){ try{ localStorage.setItem('ams_cl', JSON.stringify(OVR_CL)); 
 // Remote activity log — built from the Change Log sheet.
 // Includes every teammate's notes, never overwritten by concurrent writes.
 let OVR_ACTIVITY = {};
+// Timestamp (ISO) of the most recent Status change per row idx, derived from the
+// Change Log sheet — powers the "waiting since" label on stalled items.
+let OVR_STATUS_SINCE = {};
+function waitingSinceLabel(idx){
+  const ts = OVR_STATUS_SINCE[idx];
+  if(!ts) return '';
+  const days = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  if(days <= 0) return 'today';
+  if(days === 1) return '1 day';
+  return days + ' days';
+}
 
 function getCL(i){
   // Prefer remote activity (all teammates) over local-only log
@@ -1185,6 +1246,86 @@ let OVR_E = {};
 let ONLINE_USERS = {}; // { 'Name': timestamp_ms } — presence heartbeat
 try { OVR_E = JSON.parse(localStorage.getItem('ams_e') || '{}'); } catch(e){}
 function saveE(){ try{ localStorage.setItem('ams_e', JSON.stringify(OVR_E)); }catch(e){} }
+
+// ── Bulk actions — select multiple rows, apply Status/Action/Dept at once ──
+let BULK_SEL = new Set();
+function toggleBulkSel(idx, checked){
+  if(checked) BULK_SEL.add(idx); else BULK_SEL.delete(idx);
+  renderBulkBar();
+}
+function toggleBulkSelAll(tab, checked){
+  document.querySelectorAll(`#tbody-${tab} .bulk-cb`).forEach(cb=>{
+    cb.checked = checked;
+    const idx = Number(cb.dataset.idx);
+    if(checked) BULK_SEL.add(idx); else BULK_SEL.delete(idx);
+  });
+  renderBulkBar();
+}
+function clearBulkSel(){
+  BULK_SEL.clear();
+  document.querySelectorAll('.bulk-cb, .bulk-selall').forEach(cb=>cb.checked=false);
+  renderBulkBar();
+}
+function applyBulkField(kind, val){
+  if(!val || !BULK_SEL.size) return;
+  const FIELD_MAP = {
+    status: {store:OVR_S, save:saveS, code:'S', label:'Status'},
+    action: {store:OVR_A, save:saveA, code:'A', label:'Action'},
+    dept:   {store:OVR_D, save:saveD, code:'D', label:'Dept'},
+  };
+  const m = FIELD_MAP[kind];
+  if(!m) return;
+  const n = BULK_SEL.size;
+  BULK_SEL.forEach(idx=>{
+    m.store[idx] = val;
+    pushOverride(raw[idx]?.order, m.code, val);
+    logChangeToComment(idx, `${m.label} → ${val} (bulk update)`);
+  });
+  m.save();
+  renderTabBadges();
+  renderSidebarDebounced();
+  if(['daily','weekly','monthly'].includes(currentTab) && drillRows[currentTab] && drillRows[currentTab].length) renderDrillTable(currentTab);
+  else renderTab(currentTab);
+  showToast(`Updated ${n} item${n!==1?'s':''}: ${m.label} → ${val}`);
+}
+function renderBulkBar(){
+  let bar = document.getElementById('bulkBar');
+  const n = BULK_SEL.size;
+  if(!n){ if(bar) bar.remove(); return; }
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'bulkBar';
+    bar.className = 'bulk-bar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <span class="bulk-count">${n} selected</span>
+    <select onchange="applyBulkField('status',this.value);this.value=''">
+      <option value="">Set Status…</option>
+      <option value="New">New</option>
+      <option value="Waiting on Supplier">Waiting on Supplier</option>
+      <option value="Waiting on Customer">Waiting on Customer</option>
+      <option value="Ongoing">Ongoing</option>
+      <option value="Resolved">Resolved</option>
+    </select>
+    <select onchange="applyBulkField('action',this.value);this.value=''">
+      <option value="">Set Action…</option>
+      <option value="URGENT">URGENT</option>
+      <option value="Email">Email</option>
+      <option value="Confirm">Confirm</option>
+      <option value="Log">Log</option>
+      <option value="No Action">No Action</option>
+    </select>
+    <select onchange="applyBulkField('dept',this.value);this.value=''">
+      <option value="">Set Dept…</option>
+      <option value="Store Manager">Store Mgr</option>
+      <option value="CS">CS</option>
+      <option value="Supply Chain">Supply Chain</option>
+      <option value="PayPal">PayPal</option>
+    </select>
+    <button class="bulk-clear" onclick="clearBulkSel()">Clear</button>
+  `;
+}
 
 // ── Google Sheets sync ──────────────────────────────────────
 // Sequential write queue — prevents two simultaneous writes (e.g. field + auto-comment)
@@ -1261,10 +1402,11 @@ const idx = orderToIdx[orderKey];
       if(ov.A && OVR_A[idx] !== ov.A){ OVR_A[idx] = ov.A; changed = true; }
       if(ov.D && OVR_D[idx] !== ov.D){ OVR_D[idx] = ov.D; changed = true; }
       if(ov.C && OVR_C[idx] !== ov.C){ OVR_C[idx] = ov.C; changed = true; }
+      if(ov.O && OVR_OWN[idx] !== ov.O){ OVR_OWN[idx] = ov.O; changed = true; }
     }
     if(ov.Emailed && OVR_E[orderKey] !== ov.Emailed){ OVR_E[orderKey] = ov.Emailed; changed = true; }
   });
-  saveP(); saveS(); saveA(); saveD(); saveC(); saveE(); saveCL();
+  saveP(); saveS(); saveA(); saveD(); saveC(); saveOwn(); saveE(); saveCL();
   return changed;
 }
 
@@ -1301,6 +1443,7 @@ function applyChangeLogRows(rows){
   });
 
   const byIdx = {};
+  const statusSince = {}; // idx -> latest ISO timestamp where Field === 'Status'
   rows.forEach(row=>{
     const ts  = String(row['Timestamp']   || '').trim();
     const who = String(row['Username']    || '').trim();
@@ -1311,6 +1454,8 @@ function applyChangeLogRows(rows){
 
     const idx = o2i[ord] ?? o2i[ord.replace(/^#/,'')] ?? o2i['#'+ord.replace(/^#/,'')];
     if(idx === undefined) return;
+
+    if(fld === 'Status' && ts && (!statusSince[idx] || ts > statusSince[idx])) statusSince[idx] = ts;
 
     // Format timestamp
     let dateStr = '';
@@ -1346,6 +1491,9 @@ function applyChangeLogRows(rows){
       OVR_ACTIVITY[idx] = sorted;
       changed = true;
     }
+  });
+  Object.keys(statusSince).forEach(idx=>{
+    if(OVR_STATUS_SINCE[idx] !== statusSince[idx]){ OVR_STATUS_SINCE[idx] = statusSince[idx]; changed = true; }
   });
   return changed;
 }
@@ -1448,6 +1596,20 @@ function getA(i){ return OVR_A[i] ?? raw[i]?.action ?? 'Log'; }
 function isHandled(i){ return getS(i)==='Resolved'; }
 function isUrgent(i){ return !isHandled(i) && getA(i)==='URGENT'; }
 function needsAttn(i){ return !isHandled(i) && NEEDS_ATT.has(getA(i)) && !OVR_E[String(raw[i]?.order||'').trim()]; }
+// Full set of progress statuses a complaint can be in, in workflow order.
+// "Waiting on Supplier/Customer" let the team see exactly what a stalled item
+// is stuck waiting on, instead of a generic "Ongoing".
+const STATUS_LIST = ['New','Waiting on Supplier','Waiting on Customer','Ongoing','Resolved'];
+const STATUS_SLUG  = {'New':'New','Waiting on Supplier':'WaitSupplier','Waiting on Customer':'WaitCustomer','Ongoing':'Ongoing','Resolved':'Resolved'};
+function statusSlug(s){ return STATUS_SLUG[s] || String(s).replace(/[^A-Za-z0-9]/g,''); }
+// Day-card status badges: icon + short label + lowercase CSS suffix, in display order.
+const STATUS_BADGE = [
+  {v:'New',                  icon:'🔴', lbl:'pending',           cls:'s-new'},
+  {v:'Waiting on Supplier',  icon:'🟠', lbl:'waiting on supplier',cls:'s-waitsupplier'},
+  {v:'Waiting on Customer',  icon:'🟣', lbl:'waiting on customer',cls:'s-waitcustomer'},
+  {v:'Ongoing',              icon:'🟡', lbl:'ongoing',           cls:'s-ongoing'},
+  {v:'Resolved',             icon:'✅', lbl:'resolved',          cls:'s-resolved'},
+];
 
 
 // Per-tab filter state
@@ -1471,7 +1633,7 @@ const COL_FILTER_OPTS = {
   dept:     [['all','All'],['Store Manager','Store Mgr'],['CS','Customer Service'],['Supply Chain','Supply Chain'],['PayPal','PayPal']],
   priority: [['all','All'],['Critical','Critical'],['High','High'],['Medium','Medium'],['Low','Low']],
   action:   [['all','All'],['URGENT','Urgent'],['Email','Email'],['Confirm','Confirm'],['Log','Log'],['No Action','No Action']],
-  status:   [['all','All'],['New','New'],['Ongoing','Ongoing'],['Resolved','Resolved']],
+  status:   [['all','All'],['New','New'],['Waiting on Supplier','Wait: Supplier'],['Waiting on Customer','Wait: Customer'],['Ongoing','Ongoing'],['Resolved','Resolved']],
 };
 let _cfState = {field:null, tab:null};
 
@@ -1639,6 +1801,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
     const emailedStamp = OVR_E[String(r.order||'').trim()] || '';
     const dateCol = showDate ? `<td class="col-date">${fmt(r.date)}</td>` : '';
     return `<tr data-idx="${r.idx}" class="${isUrg?'row-urg':''} ${isRes?'row-resolved':''}">
+      <td><input type="checkbox" class="bulk-cb" data-idx="${r.idx}" ${BULK_SEL.has(r.idx)?'checked':''} onchange="toggleBulkSel(${r.idx},this.checked)"></td>
       <td class="col-order"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${r.order}${emailedStamp ? `<button class="email-btn email-btn-done" onclick="unmarkEmailed(${r.idx})" title="Emailed ${emailedStamp} · Click to unmark">✓ Emailed</button>` : `<button class="email-btn" onclick="openEmailModal(${r.idx})">✉️ Email</button>`}</div></td>
       ${dateCol}
       <td>${catBadge(r.cat,tab)}</td>
@@ -1648,7 +1811,8 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
         <option value="CS"            ${getD(r.idx)==='CS'?'selected':''}>CS</option>
         <option value="Supply Chain"  ${getD(r.idx)==='Supply Chain'?'selected':''}>Supply Chain</option>
         <option value="PayPal"        ${getD(r.idx)==='PayPal'?'selected':''}>PayPal</option>
-      </select></td>
+      </select>
+      <input type="text" class="owner-inp" placeholder="Owner…" value="${getOwn(r.idx).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onblur="chgOwn(${r.idx},this)" title="Who's handling this item"></td>
       <td>
         <select class="sel-p p-${p}" onchange="chgP(${r.idx},this)" title="Change priority">
           <option value="Critical" ${p==='Critical'?'selected':''}>Critical</option>
@@ -1667,12 +1831,16 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
         </select>
       </td>
       <td>
-        <select class="sel-s s-${s}" onchange="chgS(${r.idx},this)" title="Change status">
+        <select class="sel-s s-${statusSlug(s)}" onchange="chgS(${r.idx},this)" title="Change status">
           <option value="New"      ${s==='New'?'selected':''}>New</option>
+          <option value="Waiting on Supplier" ${s==='Waiting on Supplier'?'selected':''}>Waiting on Supplier</option>
+          <option value="Waiting on Customer" ${s==='Waiting on Customer'?'selected':''}>Waiting on Customer</option>
           <option value="Ongoing"  ${s==='Ongoing'?'selected':''}>Ongoing</option>
           <option value="Resolved" ${s==='Resolved'?'selected':''}>Resolved</option>
         </select>
+        ${(s==='Waiting on Supplier'||s==='Waiting on Customer') && waitingSinceLabel(r.idx) ? `<div class="wait-since">⏳ waiting ${waitingSinceLabel(r.idx)}</div>` : ''}
       </td>
+      <td class="col-nextaction">${r.nextAction ? String(r.nextAction).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '<span class="na-empty">—</span>'}</td>
       <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
@@ -1724,7 +1892,7 @@ function chgS(idx, sel){
   saveS();
   pushOverride(raw[idx]?.order, 'S', sel.value);
   logChangeToComment(idx, `Status → ${sel.value}`);
-  sel.className = 'sel-s s-'+sel.value;
+  sel.className = 'sel-s s-'+statusSlug(sel.value);
   const par = sel.closest('tr');
   if(par) par.classList.toggle('row-resolved', sel.value==='Resolved');
   renderTabBadges();
@@ -1897,8 +2065,8 @@ function renderTab_today(){
   // Mini 4: Status donut
   destroyOvChart('status');
   const stC=cnt(data.map(r=>getS(r.idx)));
-  const stOrder=['New','Ongoing','Resolved'];
-  const stCol={'New':'#3b82f6','Ongoing':'#f59e0b','Resolved':'#10b981'};
+  const stOrder=STATUS_LIST;
+  const stCol={'New':'#3b82f6','Waiting on Supplier':'#f97316','Waiting on Customer':'#8b5cf6','Ongoing':'#f59e0b','Resolved':'#10b981'};
   const stFilt=stOrder.filter(s=>stC[s]);
   _ovCharts.status = new Chart(document.getElementById('ov-status'),{
     type:'doughnut',
@@ -1907,11 +2075,11 @@ function renderTab_today(){
     options:{responsive:true,cutout:'60%',
       plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:8,padding:6}}}}
   });
-  const newN=stC['New']||0, ongoingN=stC['Ongoing']||0, resolvedN=stC['Resolved']||0;
+  const newN=stC['New']||0, waitSupN=stC['Waiting on Supplier']||0, waitCustN=stC['Waiting on Customer']||0, ongoingN=stC['Ongoing']||0, resolvedN=stC['Resolved']||0;
   const resPctAll=data.length?Math.round(resolvedN/data.length*100):0;
-  const unresolvedN=newN+ongoingN;
+  const unresolvedN=newN+waitSupN+waitCustN+ongoingN;
   document.getElementById('ov-insight-status').textContent =
-    `New: ${newN} · Ongoing: ${ongoingN} · Resolved: ${resolvedN}. ${unresolvedN} complaints still need action. ${ongoingN>20?`${ongoingN} items stuck in "Ongoing" — review for stalled cases that should be escalated or closed.`:resPctAll>=60?`Resolution rate of ${resPctAll}% is healthy.`:`Resolution rate is ${resPctAll}% — a backlog of ${unresolvedN} open items is building.`}`;
+    `New: ${newN} · Waiting on Supplier: ${waitSupN} · Waiting on Customer: ${waitCustN} · Ongoing: ${ongoingN} · Resolved: ${resolvedN}. ${unresolvedN} complaints still need action. ${ongoingN>20?`${ongoingN} items stuck in "Ongoing" — review for stalled cases that should be escalated or closed.`:resPctAll>=60?`Resolution rate of ${resPctAll}% is healthy.`:`Resolution rate is ${resPctAll}% — a backlog of ${unresolvedN} open items is building.`}`;
 
   // Mini 5: Action type
   destroyOvChart('action');
@@ -1984,8 +2152,10 @@ function renderTab_today(){
         <option value="Log"       ${a==='Log'?'selected':''}>Log</option>
         <option value="No Action" ${a==='No Action'?'selected':''}>No Action</option>
       </select></td>
-      <td><select class="sel-s s-${s}" onchange="chgS(${r.idx},this)" title="Change status">
+      <td><select class="sel-s s-${statusSlug(s)}" onchange="chgS(${r.idx},this)" title="Change status">
         <option value="New"      ${s==='New'?'selected':''}>New</option>
+        <option value="Waiting on Supplier" ${s==='Waiting on Supplier'?'selected':''}>Waiting on Supplier</option>
+        <option value="Waiting on Customer" ${s==='Waiting on Customer'?'selected':''}>Waiting on Customer</option>
         <option value="Ongoing"  ${s==='Ongoing'?'selected':''}>Ongoing</option>
         <option value="Resolved" ${s==='Resolved'?'selected':''}>Resolved</option>
       </select></td>
@@ -2083,10 +2253,9 @@ function renderTab_daily(){
     const d2 = new Date(day+'T00:00:00');
     const dayName = d2.toLocaleDateString('en-GB',{weekday:'short'});
     const dayNum  = d2.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
-    const nNew      = dr.filter(r=>getS(r.idx)==='New').length;
-    const nOngoing  = dr.filter(r=>getS(r.idx)==='Ongoing').length;
-    const nResolved = dr.filter(r=>getS(r.idx)==='Resolved').length;
-    const allDone   = dr.length>0 && nNew===0 && nOngoing===0;
+    const statusCounts = {};
+    dr.forEach(r=>{ const s=getS(r.idx); statusCounts[s]=(statusCounts[s]||0)+1; });
+    const allDone = dr.length>0 && STATUS_LIST.filter(s=>s!=='Resolved').every(s=>!statusCounts[s]);
     return `<div class="pc ${pcClass(dr.length)}${urg>0?' has-urg':''}" onclick="drillDay('${day}')">
       <div class="pc-head">
         <div><div class="pc-lbl">${dayName} ${dayNum}</div></div>
@@ -2100,11 +2269,13 @@ function renderTab_daily(){
         ${tc?`<span class="pc-top">${catSym(tc[0])} ${tc[0]}</span>`:`<span class="pc-top" style="color:#d1d5db">— none</span>`}
       </div>
       ${dr.length>0?`<div class="pc-status-row">
-        ${allDone?`<span class="pc-stat s-all">✅ All resolved</span>`:`
-          ${nNew>0?`<span class="pc-stat s-new" onclick="event.stopPropagation();drillDay('${day}','New')" title="Show only pending items for this day">🔴 ${nNew} pending</span>`:''}
-          ${nOngoing>0?`<span class="pc-stat s-ongoing" onclick="event.stopPropagation();drillDay('${day}','Ongoing')" title="Show only ongoing items for this day">🟡 ${nOngoing} ongoing</span>`:''}
-          ${nResolved>0?`<span class="pc-stat s-resolved" onclick="event.stopPropagation();drillDay('${day}','Resolved')" title="Show only resolved items for this day">✅ ${nResolved} resolved</span>`:''}
-        `}
+        ${allDone?`<span class="pc-stat s-all">✅ All resolved</span>`:
+          STATUS_BADGE.map(m=>{
+            const n = statusCounts[m.v]||0;
+            if(!n) return '';
+            return `<span class="pc-stat ${m.cls}" onclick="event.stopPropagation();drillDay('${day}','${m.v}')" title="Show only ${m.lbl} items for this day">${m.icon} ${n} ${m.lbl}</span>`;
+          }).join('')
+        }
       </div>`:''}
     </div>`;
   }).join('');
@@ -2438,7 +2609,7 @@ function refreshOverridesInDOM(){
     if(selP && selP.value !== p){ selP.value = p; selP.className = 'sel-p p-'+p; }
 
     const selS = tr.querySelector('.sel-s');
-    if(selS && selS.value !== s){ selS.value = s; selS.className = 'sel-s s-'+s; }
+    if(selS && selS.value !== s){ selS.value = s; selS.className = 'sel-s s-'+statusSlug(s); }
 
     const selA = tr.querySelector('.sel-a');
     if(selA && selA.value !== a){ selA.value = a; selA.className = 'sel-a '+(a==='No Action'?'a-NoAction':'a-'+a); }
@@ -2685,6 +2856,30 @@ function renderTab_trends(){
                y:{ticks:{font:{size:10}},grid:{display:false}} } }
   });
 
+  // ── CHART 3b: Supplier bar ─────────────────────────────────
+  destroyChart('supplier');
+  const supCounts = {}; data.forEach(r=>{ const s=(r.supplier||'').trim(); if(s) supCounts[s]=(supCounts[s]||0)+1; });
+  const supE = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  _charts.supplier = new Chart(document.getElementById('ch-supplier'),{
+    type:'bar',
+    data:{ labels:supE.map(e=>e[0]),
+      datasets:[{ label:'Complaints', data:supE.map(e=>e[1]),
+        backgroundColor:supE.map((e,i)=>i===0&&e[1]>=5?'#ef4444':'#6366f1'),
+        borderRadius:6,borderSkipped:false }] },
+    options:{ responsive:true,maintainAspectRatio:false,indexAxis:'y',
+      plugins:{ legend:{display:false} },
+      scales:{ x:{beginAtZero:true,ticks:{precision:0,font:{size:10}},grid:{color:'#f1f5f9'}},
+               y:{ticks:{font:{size:10}},grid:{display:false}} } }
+  });
+  const repeatSuppliers = supE.filter(e=>e[1]>=5);
+  const supInsightEl = document.getElementById('tr-insight-supplier');
+  if(supInsightEl){
+    supInsightEl.textContent = supE.length===0 ? 'No supplier data recorded yet.'
+      : repeatSuppliers.length
+        ? `⚠️ ${repeatSuppliers.map(e=>`${e[0]} (${e[1]})`).join(', ')} showing up repeatedly — worth a supplier-level conversation.`
+        : `No supplier has 5+ complaints yet — nothing alarming at the supplier level.`;
+  }
+
   // ── CHART 4: Action bar ───────────────────────────────────
   destroyChart('action');
   const actCounts = cnt(data.map(r=>getA(r.idx)));
@@ -2705,8 +2900,8 @@ function renderTab_trends(){
   // ── CHART 5: Status pie ───────────────────────────────────
   destroyChart('status');
   const stCounts = cnt(data.map(r=>getS(r.idx)));
-  const stOrder  = ['New','Ongoing','Resolved'];
-  const stColors = {'New':'#3b82f6','Ongoing':'#f59e0b','Resolved':'#10b981'};
+  const stOrder  = STATUS_LIST;
+  const stColors = {'New':'#3b82f6','Waiting on Supplier':'#f97316','Waiting on Customer':'#8b5cf6','Ongoing':'#f59e0b','Resolved':'#10b981'};
   _charts.status = new Chart(document.getElementById('ch-status'),{
     type:'doughnut',
     data:{ labels:stOrder.filter(s=>stCounts[s]),
@@ -2898,8 +3093,8 @@ function renderTabBadges(){
   document.getElementById('hdrPillN').textContent = allUrg;
   pill.style.display = allUrg ? 'flex' : 'none';
   const _now = new Date();
-  const nlStr = _now.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Amsterdam'});
-  const phStr = _now.toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Manila'});
+  const nlStr = _now.toLocaleString('en-US',{day:'2-digit',month:'short',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Europe/Amsterdam'});
+  const phStr = _now.toLocaleString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Manila'});
   document.getElementById('hdrMeta').textContent = `Last updated: ${nlStr} (NL) · ${phStr} (PH) · ${data.length} total entries`;
 }
 
@@ -3242,8 +3437,34 @@ function showToast(msg, durationMs=3500){
 // ── Background polling — keeps all teammates in sync ─────────
 // Polls every 10 s. Reads DashboardOverrides AND Change Log in parallel.
 // Change Log is the source of truth for who wrote what — never overwritten.
+// Re-fetches SHEET_CSV_URL and appends any genuinely new complaint rows
+// (deduped by Order+Date, same rule the Apps Script uses) onto the existing
+// `raw`/`data` arrays. Existing rows keep their index — overrides (status,
+// action, comments, etc, all keyed by idx) stay correctly attached to the
+// right complaint. Only ever appends; never reorders or removes rows.
+async function refreshComplaintData(){
+  try{
+    const resp = await fetch(SHEET_CSV_URL, {cache:'no-store'});
+    if(!resp.ok) return false;
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    const freshRaw = csvToRaw(rows);
+    if(!freshRaw.length) return false;
+    const existingKeys = new Set(raw.map(r=>String(r.order).trim()+'|'+String(r.date).trim()));
+    const newOnes = freshRaw.filter(r=>!existingKeys.has(String(r.order).trim()+'|'+String(r.date).trim()));
+    if(!newOnes.length) return false;
+    raw = raw.concat(newOnes);
+    data = raw.map((r,i)=>({...r,idx:i}));
+    populateCatDropdown();
+    return true;
+  } catch(e){
+    console.warn('[AMS] refreshComplaintData failed:', e);
+    return false;
+  }
+}
+
 async function syncAndRender(){
-  const [ovChanged, clChanged] = await Promise.all([loadOverrides(), loadChangeLog()]);
+  const [ovChanged, clChanged, dataChanged] = await Promise.all([loadOverrides(), loadChangeLog(), refreshComplaintData()]);
 
   // Show Change Log status appended to the sync line so it's always visible
   const el = document.getElementById('syncStatus');
@@ -3258,9 +3479,10 @@ async function syncAndRender(){
   }
 
   renderTabBadges();
-  if(ovChanged || clChanged){
+  if(ovChanged || clChanged || dataChanged){
     renderTab(currentTab);
     if(clChanged) showToast('↓ Team updates received');
+    if(dataChanged) showToast('🆕 New complaint(s) loaded');
   } else {
     refreshOverridesInDOM();
   }
