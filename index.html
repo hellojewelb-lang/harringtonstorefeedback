@@ -1112,12 +1112,6 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
         <div class="chart-canvas-wrap"><canvas id="ch-dept" height="200"></canvas></div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Complaints by Supplier</div>
-        <div class="chart-sub">Which suppliers show up repeatedly across complaints?</div>
-        <div class="chart-canvas-wrap"><canvas id="ch-supplier" height="200"></canvas></div>
-        <div class="chart-sub" id="tr-insight-supplier" style="margin-top:8px;font-weight:600"></div>
-      </div>
-      <div class="chart-card">
         <div class="chart-title">Action Required Breakdown</div>
         <div class="chart-sub">How many items need immediate action vs. just logging?</div>
         <div class="chart-canvas-wrap"><canvas id="ch-action" height="200"></canvas></div>
@@ -2855,30 +2849,6 @@ function renderTab_trends(){
       scales:{ x:{beginAtZero:true,ticks:{precision:0,font:{size:10}},grid:{color:'#f1f5f9'}},
                y:{ticks:{font:{size:10}},grid:{display:false}} } }
   });
-
-  // ── CHART 3b: Supplier bar ─────────────────────────────────
-  destroyChart('supplier');
-  const supCounts = {}; data.forEach(r=>{ const s=(r.supplier||'').trim(); if(s) supCounts[s]=(supCounts[s]||0)+1; });
-  const supE = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  _charts.supplier = new Chart(document.getElementById('ch-supplier'),{
-    type:'bar',
-    data:{ labels:supE.map(e=>e[0]),
-      datasets:[{ label:'Complaints', data:supE.map(e=>e[1]),
-        backgroundColor:supE.map((e,i)=>i===0&&e[1]>=5?'#ef4444':'#6366f1'),
-        borderRadius:6,borderSkipped:false }] },
-    options:{ responsive:true,maintainAspectRatio:false,indexAxis:'y',
-      plugins:{ legend:{display:false} },
-      scales:{ x:{beginAtZero:true,ticks:{precision:0,font:{size:10}},grid:{color:'#f1f5f9'}},
-               y:{ticks:{font:{size:10}},grid:{display:false}} } }
-  });
-  const repeatSuppliers = supE.filter(e=>e[1]>=5);
-  const supInsightEl = document.getElementById('tr-insight-supplier');
-  if(supInsightEl){
-    supInsightEl.textContent = supE.length===0 ? 'No supplier data recorded yet.'
-      : repeatSuppliers.length
-        ? `⚠️ ${repeatSuppliers.map(e=>`${e[0]} (${e[1]})`).join(', ')} showing up repeatedly — worth a supplier-level conversation.`
-        : `No supplier has 5+ complaints yet — nothing alarming at the supplier level.`;
-  }
 
   // ── CHART 4: Action bar ───────────────────────────────────
   destroyChart('action');
