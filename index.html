@@ -1900,6 +1900,8 @@ function chgDept(idx, sel){
 }
 function chgC(idx, el){
   const val = el.value.trim();
+  const prevVal = OVR_C[idx] || '';
+  if(val === prevVal) return; // nothing actually changed (e.g. clicked in/out without typing) — don't log a blank entry
   if(val) OVR_C[idx] = val; else delete OVR_C[idx];
   saveC();
   const name = localStorage.getItem('ams_username') || '';
