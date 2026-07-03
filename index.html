@@ -1599,6 +1599,11 @@ const FS = {
 
 let currentTab = 'today';
 let dailyStart = addDays(TODAY,-6), dailyEnd = TODAY;
+// True until the user manually applies a custom date range — while true, the
+// Daily tab keeps nudging its end date forward to match the newest data
+// actually present, so it doesn't lag a day behind if the page has been open
+// since before midnight or a submission's date is ahead of the browser's own "today".
+let _dailyRangeIsDefault = true;
 // Set date inputs to current range dynamically — never hardcode dates in HTML
 (()=>{ const s=document.getElementById('daily-start'),e=document.getElementById('daily-end'); if(s)s.value=dailyStart; if(e)e.value=dailyEnd; })();
 let weekCount  = 3;
@@ -2153,6 +2158,7 @@ function applyDaily(){
   dailyStart = document.getElementById('daily-start').value;
   dailyEnd   = document.getElementById('daily-end').value;
   if(dailyStart > dailyEnd){ [dailyStart,dailyEnd]=[dailyEnd,dailyStart]; }
+  _dailyRangeIsDefault = false; // user picked a range on purpose — stop auto-shifting it
   closeDrill('daily');
   renderTab_daily();
 }
@@ -2192,12 +2198,15 @@ function renderPresence(){
 
 
 function renderTab_daily(){
-  // Auto-correct: if current range has no data (e.g. default "last 7 days" has no records),
-  // shift to the 7 most recent days that actually have data. Fixes blank Daily tab on fresh devices.
-  if(data.length){
+  // Auto-correct (only while the user hasn't manually picked a range): shift
+  // forward to the 7 most recent days that actually have data whenever either
+  // (a) the current range has no data at all (fresh device), or (b) newer
+  // data exists past the current end date (page open across midnight, or a
+  // submission timestamped ahead of the browser's own "today").
+  if(data.length && _dailyRangeIsDefault){
+    const latestDate = data.map(r=>r.date).filter(Boolean).sort().pop();
     const inRange = data.some(r=>r.date>=dailyStart && r.date<=dailyEnd);
-    if(!inRange){
-      const latestDate = data.map(r=>r.date).filter(Boolean).sort().pop();
+    if(!inRange || (latestDate && latestDate > dailyEnd)){
       if(latestDate){
         dailyEnd   = latestDate;
         dailyStart = addDays(latestDate, -6);
