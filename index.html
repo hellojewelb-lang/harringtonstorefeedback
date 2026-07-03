@@ -8,7 +8,6 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 .col-comment{min-width:200px;max-width:280px}
-.col-nextaction{min-width:180px;max-width:260px;font-size:11.5px;color:#374151;line-height:1.4}
 .wait-since{font-size:10px;color:#c2410c;font-weight:700;margin-top:3px}
 [data-theme="dark"] .wait-since{color:#fdba74}
 .bulk-bar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 16px;border-radius:12px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:1000;font-size:12px}
@@ -16,8 +15,6 @@
 .bulk-bar select{border-radius:8px;border:1px solid #3a3a55;background:#252540;color:#fff;padding:5px 8px;font-size:12px;outline:none}
 .bulk-bar .bulk-clear{border:1px solid #3a3a55;background:transparent;color:#fca5a5;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
 .bulk-bar .bulk-clear:hover{background:#3a1a1a}
-.col-nextaction .na-empty{color:#c1c7d0;font-style:italic}
-[data-theme="dark"] .col-nextaction{color:#c9d3e2}
 .comment-inp{width:100%;font-size:11px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;color:#374151;background:#f9fafb;outline:none;font-family:inherit;transition:border-color .15s,background .15s;min-height:64px;resize:vertical;line-height:1.5;display:block}
 .comment-inp:focus{border-color:#6366f1;background:#fff;box-shadow:0 0 0 2px rgba(99,102,241,.12)}
 .comment-inp::placeholder{color:#9ca3af}
@@ -866,7 +863,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-daily" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-daily" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-daily"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('daily',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','daily')">Order</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','daily')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','daily')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','daily')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','daily')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','daily')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','daily')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-daily"</tbody></table>
+    <table><thead id="thead-daily"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('daily',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','daily')">Order</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','daily')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','daily')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','daily')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','daily')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','daily')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','daily')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-daily"</tbody></table>
     <div class="empty-st" id="empty-daily" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -943,7 +940,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-weekly" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-weekly" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-weekly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('weekly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','weekly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','weekly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','weekly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','weekly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','weekly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','weekly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','weekly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','weekly')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-weekly"</tbody></table>
+    <table><thead id="thead-weekly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('weekly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','weekly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','weekly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','weekly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','weekly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','weekly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','weekly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','weekly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','weekly')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-weekly"</tbody></table>
     <div class="empty-st" id="empty-weekly" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -1005,7 +1002,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     <div class="rmeta" id="meta-monthly" style="padding:4px 14px 6px;border-top:1px solid #f0f0f0"></div>
     <div id="chart-monthly" style="padding:0 14px"></div>
     </div><!-- end dd-sticky-header -->
-    <table><thead id="thead-monthly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('monthly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','monthly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','monthly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','monthly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','monthly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','monthly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','monthly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','monthly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','monthly')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-monthly"</tbody></table>
+    <table><thead id="thead-monthly"><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('monthly',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','monthly')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','monthly')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','monthly')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','monthly')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','monthly')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','monthly')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','monthly')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','monthly')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-monthly"</tbody></table>
     <div class="empty-st" id="empty-monthly" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Adjust filters</div></div>
   </div>
 </div>
@@ -1073,7 +1070,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   <div class="rmeta" id="meta-all"></div>
   <div id="chart-all"></div>
   <div class="tbl-wrap">
-    <table><thead><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('all',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','all')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','all')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','all')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','all')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','all')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','all')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','all')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','all')">Status</th><th>Next Action</th><th>Comment</th></tr></thead><tbody id="tbody-all"</tbody></table>
+    <table><thead><tr><th style="width:24px"><input type="checkbox" class="bulk-selall" onchange="toggleBulkSelAll('all',this.checked)" title="Select all"></th><th class="sortable" data-col="order" onclick="sortTbl('order','all')">Order</th><th class="sortable" data-col="date" onclick="sortTbl('date','all')">Date</th><th class="sortable" data-col="cat" onclick="sortTbl('cat','all')">Category</th><th class="sortable" data-col="issue" onclick="sortTbl('issue','all')">Issue</th><th class="sortable" data-col="dept" onclick="sortTbl('dept','all')">Dept</th><th class="sortable" data-col="priority" onclick="sortTbl('priority','all')">Priority</th><th class="sortable" data-col="action" onclick="sortTbl('action','all')">Action</th><th class="sortable" data-col="status" onclick="sortTbl('status','all')">Status</th><th>Comment</th></tr></thead><tbody id="tbody-all"</tbody></table>
     <div class="empty-st" id="empty-all" style="display:none"><div class="empty-ico">🔍</div><div class="empty-ttl">No items match</div><div class="empty-sub">Try adjusting filters</div></div>
   </div>
 </div>
@@ -1818,7 +1815,6 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
         </select>
         ${(s==='Waiting on Supplier'||s==='Waiting on Customer') && waitingSinceLabel(r.idx) ? `<div class="wait-since">⏳ waiting ${waitingSinceLabel(r.idx)}</div>` : ''}
       </td>
-      <td class="col-nextaction">${r.nextAction ? String(r.nextAction).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '<span class="na-empty">—</span>'}</td>
       <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
