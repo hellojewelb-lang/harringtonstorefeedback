@@ -682,7 +682,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
-    <div class="hdr-pill" id="hdrPill" style="display:none" onclick="urgentPillClick()" title="View all Urgent items">⚠️ <span id="hdrPillN">0</span> Urgent</div>
+    <div class="hdr-pill" id="hdrPill" style="display:none" onclick="urgentPillClick()" title="Urgent items across all time — may differ from the period you're currently viewing">⚠️ <span id="hdrPillN">0</span> Urgent <span style="opacity:.75;font-weight:600">(all-time)</span></div>
     <button class="hdr-icon-btn" id="hdrBack" onclick="goBack()">← Back</button>
     <button class="hdr-icon-btn" onclick="setTab('today')" title="Go to Overview">🏠 Home</button>
     <button class="hdr-icon-btn" id="tab-trends" onclick="setTab('trends')" style="background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4);color:#93c5fd">📊 Trends</button>
@@ -1685,7 +1685,11 @@ function applyFilters(rows, tab){
     if(f.attn && !needsAttn(r.idx)) return false;
     if(f.dept!=='all' && getD(r.idx)!==f.dept) return false;
     if(f.priority!=='all' && getP(r.idx)!==f.priority) return false;
-    if(f.action!=='all' && getA(r.idx)!==f.action) return false;
+    // "URGENT" means "still-outstanding urgent item" everywhere else in the
+    // dashboard (see isUrgent) — filtering on it must exclude Resolved items
+    // too, otherwise clicking an "N Urgent" badge shows more rows than N.
+    if(f.action==='URGENT'){ if(!isUrgent(r.idx)) return false; }
+    else if(f.action!=='all' && getA(r.idx)!==f.action) return false;
     if(f.status!=='all' && getS(r.idx)!==f.status) return false;
     if(f.cat && f.cat!=='all' && r.cat!==f.cat) return false;
     if(q && !(r.order+' '+r.issue+' '+r.cat+' '+r.dept).toLowerCase().includes(q)) return false;
