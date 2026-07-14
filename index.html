@@ -47,12 +47,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .tab-dot{display:none;width:7px;height:7px;background:#dc2626;border-radius:50%;flex-shrink:0}
 
 /* ── LAYOUT ── */
-.layout{display:grid;grid-template-columns:256px 1fr;min-height:calc(100vh - 93px)}
+.layout{display:grid;grid-template-columns:256px 1fr;min-height:calc(100vh - 93px);transition:grid-template-columns .2s ease}
+.layout.sidebar-collapsed{grid-template-columns:32px 1fr}
 
 /* ── SIDEBAR ── */
 .sidebar{background:white;border-right:1px solid #e5e7eb;padding:14px;display:flex;flex-direction:column;position:-webkit-sticky;position:sticky;top:93px;height:calc(100vh - 93px);overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sidebar::-webkit-scrollbar{width:3px}
 .sidebar::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:3px}
+.sidebar-toggle{position:sticky;top:0;align-self:flex-end;width:22px;height:22px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-bottom:8px;z-index:2}
+.sidebar-toggle:hover{background:#f3f4f6;color:#374151}
+.sidebar.collapsed{padding:14px 4px;align-items:center}
+.sidebar.collapsed .sidebar-content{display:none}
+[data-theme="dark"] .sidebar-toggle{background:#2c3347;border-color:#333d54;color:#8fa0b8}
+[data-theme="dark"] .sidebar-toggle:hover{background:#333d54;color:#e5e7eb}
 .sec-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#9ca3af;margin-bottom:8px;margin-top:14px}
 .sec-lbl:first-child{margin-top:0}
 
@@ -703,7 +710,9 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
 <div class="layout">
 
 <!-- ── SIDEBAR ── -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebarEl">
+  <button class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebar()" title="Collapse sidebar">◀</button>
+  <div class="sidebar-content" id="sidebarContent">
   <div class="sec-lbl" id="sidebarLbl">Period Summary</div>
   <div class="sum-card">
     <div class="sum-period" id="sPeriod">—</div>
@@ -730,7 +739,7 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
   <div class="sec-lbl" style="margin-top:16px">Customer Voice Map</div>
   <div id="wordCloudWrap" style="border-radius:10px;padding:10px 8px;background:rgba(0,0,0,.04);min-height:100px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 10px">
   </div>
-
+  </div>
 
 </aside>
 
@@ -3701,6 +3710,33 @@ function initTheme(){
   if(btn) btn.innerHTML = saved === 'dark' ? '☀️ Light' : '🌙 Dark';
 }
 
+function toggleSidebar(){
+  const layout = document.querySelector('.layout');
+  const sidebar = document.getElementById('sidebarEl');
+  const btn = document.getElementById('sidebarToggleBtn');
+  const collapsed = !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed', collapsed);
+  if(layout) layout.classList.toggle('sidebar-collapsed', collapsed);
+  if(btn){ btn.innerHTML = collapsed ? '▶' : '◀'; btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar'; }
+  localStorage.setItem('ams_sidebar_collapsed', collapsed ? '1' : '0');
+  // Charts may need to recalc width once the layout settles
+  requestAnimationFrame(()=>{
+    Object.values(_ovCharts||{}).forEach(c=>{ try{ c.resize(); }catch(e){} });
+    Object.values(_charts||{}).forEach(c=>{ try{ c.resize(); }catch(e){} });
+  });
+}
+
+function initSidebarCollapse(){
+  const collapsed = localStorage.getItem('ams_sidebar_collapsed') === '1';
+  if(!collapsed) return;
+  const layout = document.querySelector('.layout');
+  const sidebar = document.getElementById('sidebarEl');
+  const btn = document.getElementById('sidebarToggleBtn');
+  sidebar.classList.add('collapsed');
+  if(layout) layout.classList.add('sidebar-collapsed');
+  if(btn){ btn.innerHTML = '▶'; btn.title = 'Expand sidebar'; }
+}
+
 async function testLogSync(){
   if(!APPS_SCRIPT_URL){ alert('❌ No Apps Script URL configured.'); return; }
 
@@ -3843,6 +3879,7 @@ function changeName(){
 
 (async function(){
   initTheme();
+  initSidebarCollapse();
   const ok = await loadData();
   if(!ok) return;
   await Promise.all([loadOverrides(), loadChangeLog()]); // pull shared data from Google Sheets
