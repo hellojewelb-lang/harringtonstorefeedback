@@ -1195,6 +1195,15 @@ const P_DEFAULT  = {URGENT:'Critical',Email:'High',Confirm:'High',Log:'Medium','
 let OVR_P = {}, OVR_S = {}, OVR_A = {}, OVR_D = {}, OVR_C = {};
 try { OVR_P = JSON.parse(localStorage.getItem('ams_p') || '{}'); OVR_S = JSON.parse(localStorage.getItem('ams_s') || '{}'); OVR_A = JSON.parse(localStorage.getItem('ams_a') || '{}'); OVR_D = JSON.parse(localStorage.getItem('ams_d') || '{}'); OVR_C = JSON.parse(localStorage.getItem('ams_c') || '{}'); } catch(e){}
 
+// ── Staleness tracking ──────────────────────────────────────────
+// Every teammate's browser caches Status/Action overrides locally and only
+// refreshes them via the 10s poll below. If that poll silently stalls (tab
+// backgrounded/throttled, laptop asleep, network hiccup), two people can end
+// up looking at different Urgent/Resolved counts with no visible sign why.
+// These two track how long it's actually been since data last refreshed.
+let lastOverrideSyncOK = Date.now();
+let tabHiddenAt = null;
+
 function saveP(){ try{ localStorage.setItem('ams_p', JSON.stringify(OVR_P)); }catch(e){} }
 function saveS(){ try{ localStorage.setItem('ams_s', JSON.stringify(OVR_S)); }catch(e){} }
 function saveA(){ try{ localStorage.setItem('ams_a', JSON.stringify(OVR_A)); }catch(e){} }
@@ -1544,6 +1553,7 @@ async function loadOverrides(){
           return obj;
         }).filter(o=>o.OrderNumber);
         changed = applyOverrideRows(parsed);
+        lastOverrideSyncOK = Date.now();
         const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
         setSyncStatus(`synced ${t} · ${parsed.length} rows (pub)`, true);
         return changed;
@@ -1561,6 +1571,7 @@ async function loadOverrides(){
     const rows = await res.json();
     if(!Array.isArray(rows)){ setSyncStatus('bad response from Apps Script', false); return false; }
     changed = applyOverrideRows(rows);
+    lastOverrideSyncOK = Date.now();
     const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     setSyncStatus(`synced ${t} · ${rows.length} rows (script)`, true);
     return changed;
@@ -3464,9 +3475,41 @@ async function syncAndRender(){
 // Poll every 10 seconds
 setInterval(syncAndRender, 10000);
 
-// Also sync immediately when user comes back to this tab
+// ── Staleness watchdog ────────────────────────────────────────
+// If this browser hasn't managed a successful override sync in over a
+// minute (network hiccup, or the poll above got throttled — common for
+// tabs sitting in the background), stop showing a false "✅ synced"
+// checkmark and say so clearly instead, so nobody trusts stale numbers.
+function checkSyncStaleness(){
+  const ageMs = Date.now() - lastOverrideSyncOK;
+  if(ageMs < 60000) return; // fine — synced within the last minute
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  const mins = Math.floor(ageMs / 60000);
+  el.textContent = `⚠️ Data may be stale (last synced ${mins}m ago) — click ↺ or refresh the page`;
+  el.style.color = '#fca5a5';
+  el.style.fontWeight = '700';
+}
+setInterval(checkSyncStaleness, 15000);
+
+// Also sync immediately when user comes back to this tab. If the tab sat
+// hidden/backgrounded for a while, background timers (the 10s poll above)
+// can get throttled or fully paused by the browser, so a quick syncAndRender()
+// isn't enough to guarantee we're caught up — do a full reload instead so
+// this browser picks up both the latest data AND the latest dashboard code
+// (e.g. after Jewel uploads an updated index.html to GitHub).
+const RELOAD_AFTER_HIDDEN_MS = 3 * 60 * 1000; // 3 minutes
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible') syncAndRender();
+  if(document.visibilityState === 'visible'){
+    if(tabHiddenAt && (Date.now() - tabHiddenAt) > RELOAD_AFTER_HIDDEN_MS){
+      location.reload();
+      return;
+    }
+    tabHiddenAt = null;
+    syncAndRender();
+  } else {
+    tabHiddenAt = Date.now();
+  }
 });
 // Paste your deployed Apps Script URL here (see 2026-06-20-google-apps-script.js for setup)
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnWMWGdOU72HJ8cE16NLIzAmzqw-QSZFFocolK_5Yatuy-rp8oQPQEMCh9DJ2ysNSbBA/exec';
