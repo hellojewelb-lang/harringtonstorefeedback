@@ -1399,7 +1399,12 @@ const OVERRIDES_SHEET_ID   = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 function ovKey(r){
   const o = String(r?.order||'').trim();
   if(o && o !== '-') return o;
-  return '-@' + String(r?.date||'').trim();
+  // Use the full timestamp (dateTime), not the day-only `date`, so two
+  // different no-order complaints submitted on the same calendar day get
+  // distinct keys instead of silently sharing/overwriting one save slot.
+  // Falls back to `date` for older embedded/offline data that never had
+  // a dateTime field.
+  return '-@' + String(r?.dateTime || r?.date || '').trim();
 }
 
 function applyOverrideRows(rows){
@@ -3494,8 +3499,12 @@ async function refreshComplaintData(){
     const rows = parseCSV(text);
     const freshRaw = csvToRaw(rows);
     if(!freshRaw.length) return false;
-    const existingKeys = new Set(raw.map(r=>String(r.order).trim()+'|'+String(r.date).trim()));
-    const newOnes = freshRaw.filter(r=>!existingKeys.has(String(r.order).trim()+'|'+String(r.date).trim()));
+    // Key on the full timestamp (dateTime), not the day-only date — otherwise
+    // a genuinely new no-order complaint arriving on a day that already has
+    // one loaded would be mistaken for a duplicate and silently dropped.
+    const dedupKey = r => String(r.order).trim()+'|'+String(r.dateTime||r.date).trim();
+    const existingKeys = new Set(raw.map(dedupKey));
+    const newOnes = freshRaw.filter(r=>!existingKeys.has(dedupKey(r)));
     if(!newOnes.length) return false;
     raw = raw.concat(newOnes);
     data = raw.map((r,i)=>({...r,idx:i}));
@@ -3712,7 +3721,13 @@ function csvToRaw(rows){
       const order   = normalizeOrder(r[iOrd]||'');
       const date    = parseGSheetTimestamp(ts);
       const {cat,dept,action} = categorizeForm(mainP, desc+' '+more);
-      return { order, date, cat, issue, dept,
+      // dateTime keeps the FULL raw timestamp (with time-of-day), unlike
+      // `date` which is truncated to the day for grouping/display. Several
+      // complaints with no order number often share the same day, so any
+      // key built from `date` alone collides between them; `dateTime` is
+      // used instead wherever a stable per-complaint key is needed (see
+      // ovKey() and refreshComplaintData()).
+      return { order, date, dateTime: ts, cat, issue, dept,
                supplier:'DayOne', action, status:'New',
                nextAction:'', dateFlagged:date, dateResolved:'' };
     });
@@ -3733,9 +3748,13 @@ function csvToRaw(rows){
       const dept   = normalizeDept(r[iDept]||'');
       const na     = (iNA>=0?r[iNA]||'':'').trim();
       const status = (iSt>=0?(r[iSt]||'New'):'New').trim()||'New';
+      // dateTime: full raw Date column value (includes time-of-day, e.g.
+      // "09/06/2026 19:03:07") — see note in the form branch above for why
+      // this is kept separate from the day-only `date` field.
       return {
         order: normalizeOrder(r[iOrd]||''),
         date:  parseDateStr(r[iDt]||''),
+        dateTime: (iDt>=0?(r[iDt]||''):'').trim(),
         cat:   (iCat>=0?r[iCat]||'Other':'Other').trim(),
         issue: (iIss>=0?r[iIss]||'':'').trim(),
         dept, supplier:(iSup>=0?r[iSup]||'':'').trim(),
