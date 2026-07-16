@@ -1375,30 +1375,68 @@ const CHANGELOG_PUB_GID    = '2026260512';
 // Legacy — kept so any remaining references don't break
 const OVERRIDES_SHEET_ID   = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 
+// Full reconcile, not a patch-merge: every sync rebuilds OVR_P/S/A/D/C/E from
+// scratch against what the sheet says *right now*, and clears any local entry
+// the sheet no longer has an opinion on. The old version only ever wrote a
+// value when it differed from the cached one and never cleared anything —
+// so a browser that had ever cached a wrong/orphaned value (a flaky sync, a
+// race with a write, an order-number formatting mismatch) could keep serving
+// that stale value forever, since closing/reopening the browser doesn't clear
+// localStorage. That's why two teammates could see different Urgent counts
+// even after both had "successfully synced." Reconciling fully each time
+// means every browser's state converges to the shared sheet, always.
 function applyOverrideRows(rows){
+  // Match tolerant of a leading "#" on either side — raw[i].order is always
+  // normalized to "#12345" (see normalizeOrder), but the sheet's OrderNumber
+  // column isn't guaranteed to carry the "#". A silent mismatch here used to
+  // mean that order's override could never be found, so it'd fall back to
+  // the raw default forever — a second, independent way two browsers could
+  // end up disagreeing on the same order's status.
   const orderToIdx = {};
-  raw.forEach((r,i)=>{ if(r.order) orderToIdx[String(r.order).trim()] = i; });
-  let changed = false;
+  raw.forEach((r,i)=>{
+    if(!r.order) return;
+    const k = String(r.order).trim();
+    orderToIdx[k] = i;
+    orderToIdx[k.replace(/^#/,'')] = i;
+    orderToIdx['#'+k.replace(/^#/,'')] = i;
+  });
+
+  const freshP = {}, freshS = {}, freshA = {}, freshD = {}, freshC = {}, freshE = {};
   rows.forEach(ov=>{
-    const orderKey = String(ov.OrderNumber||'').trim();
-    // Presence heartbeat entries stored as _P:Name
-    if(orderKey.startsWith('_P:')){
-      const name = orderKey.slice(3);
+    const orderKeyRaw = String(ov.OrderNumber||'').trim();
+    // Presence heartbeat entries stored as _P:Name — not a real override row
+    if(orderKeyRaw.startsWith('_P:')){
+      const name = orderKeyRaw.slice(3);
       const ts = parseInt(ov.S||'0', 10);
       if(name && ts) ONLINE_USERS[name] = ts;
       renderPresence();
       return;
     }
-const idx = orderToIdx[orderKey];
+    // Canonicalize to the "#..." form used as the freshE key, matching raw[i].order
+    const orderKey = orderKeyRaw ? (orderKeyRaw.startsWith('#') ? orderKeyRaw : '#'+orderKeyRaw) : orderKeyRaw;
+    const idx = orderToIdx[orderKeyRaw] ?? orderToIdx[orderKey] ?? orderToIdx[orderKeyRaw.replace(/^#/,'')];
     if(idx !== undefined){
-      if(ov.P && OVR_P[idx] !== ov.P){ OVR_P[idx] = ov.P; changed = true; }
-      if(ov.S && OVR_S[idx] !== ov.S){ OVR_S[idx] = ov.S; changed = true; }
-      if(ov.A && OVR_A[idx] !== ov.A){ OVR_A[idx] = ov.A; changed = true; }
-      if(ov.D && OVR_D[idx] !== ov.D){ OVR_D[idx] = ov.D; changed = true; }
-      if(ov.C && OVR_C[idx] !== ov.C){ OVR_C[idx] = ov.C; changed = true; }
+      if(ov.P) freshP[idx] = ov.P;
+      if(ov.S) freshS[idx] = ov.S;
+      if(ov.A) freshA[idx] = ov.A;
+      if(ov.D) freshD[idx] = ov.D;
+      if(ov.C) freshC[idx] = ov.C;
     }
-    if(ov.Emailed && OVR_E[orderKey] !== ov.Emailed){ OVR_E[orderKey] = ov.Emailed; changed = true; }
+    if(ov.Emailed) freshE[orderKey] = ov.Emailed;
   });
+
+  let changed = false;
+  function reconcile(store, fresh){
+    Object.keys(store).forEach(k=>{ if(!(k in fresh)){ delete store[k]; changed = true; } });
+    Object.keys(fresh).forEach(k=>{ if(store[k] !== fresh[k]){ store[k] = fresh[k]; changed = true; } });
+  }
+  reconcile(OVR_P, freshP);
+  reconcile(OVR_S, freshS);
+  reconcile(OVR_A, freshA);
+  reconcile(OVR_D, freshD);
+  reconcile(OVR_C, freshC);
+  reconcile(OVR_E, freshE);
+
   saveP(); saveS(); saveA(); saveD(); saveC(); saveE(); saveCL();
   return changed;
 }
