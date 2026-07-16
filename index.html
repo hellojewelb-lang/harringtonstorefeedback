@@ -1272,6 +1272,7 @@ function applyBulkField(kind, val){
   const n = BULK_SEL.size;
   BULK_SEL.forEach(idx=>{
     m.store[idx] = val;
+    markPendingWrite(idx, m.code, val);
     pushOverride(ovKey(raw[idx]), m.code, val);
     logChangeToComment(idx, `${m.label} → ${val} (bulk update)`);
   });
@@ -1351,6 +1352,37 @@ async function _flushWrites(){
   _writeBusy = false;
 }
 
+// ── Pending-write shield ────────────────────────────────────
+// loadOverrides()'s PRIMARY read is a Google "publish to web" CSV snapshot,
+// which can lag several minutes behind a write that already succeeded via
+// Apps Script (the fallback/write path is always live; the published CSV
+// is a cache). Without this, a poll landing in that lag window reads the
+// stale snapshot and applyOverrideRows()'s full reconcile stomps a just-made
+// local edit straight back to the old value — it looks like the edit
+// "didn't take," so people redo it, sometimes several times in a row.
+// We remember our own recent local writes and prefer them over a
+// still-stale read until the read actually catches up (matches our value)
+// or the grace window expires (so a legitimate concurrent edit by someone
+// else eventually wins instead of being shut out forever).
+const PENDING_WRITE_GRACE_MS = 5 * 60 * 1000; // a little above typical publish-to-web lag
+let _pendingWrites = {}; // `${idx}:${field}` -> {value, ts}
+function markPendingWrite(idx, field, value){
+  _pendingWrites[`${idx}:${field}`] = { value, ts: Date.now() };
+}
+function applyPendingShield(fresh, field){
+  const now = Date.now();
+  Object.keys(_pendingWrites).forEach(key=>{
+    const sep = key.lastIndexOf(':');
+    const idx = Number(key.slice(0, sep));
+    const f   = key.slice(sep+1);
+    if(f !== field) return;
+    const pw = _pendingWrites[key];
+    if(now - pw.ts > PENDING_WRITE_GRACE_MS){ delete _pendingWrites[key]; return; }
+    if(fresh[idx] === pw.value){ delete _pendingWrites[key]; return; } // sheet caught up — confirmed
+    fresh[idx] = pw.value; // still stale — keep our own recent write
+  });
+}
+
 function pushOverride(orderNumber, field, value){
   if(!APPS_SCRIPT_URL || !orderNumber) return;
   const username = localStorage.getItem('ams_username') || 'Unknown';
@@ -1396,15 +1428,39 @@ const OVERRIDES_SHEET_ID   = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 // For those, key on Order+Date instead — every submission has its own
 // timestamp, and this is the same uniqueness rule already used elsewhere
 // (see refreshComplaintData's own dedup key).
+// How many rows in `raw` share each real order number. Recomputed whenever
+// `raw` changes (see computeOrderRowCounts, called from loadData() and
+// refreshComplaintData()). Needed because a single order can legitimately
+// generate several distinct complaint rows (see project routing rules —
+// one row per department that needs to act), but the override save-key
+// used to be the bare order number for every row, so a second complaint on
+// the same order silently shared/overwrote the first one's save slot.
+let ORDER_ROW_COUNTS = {};
+function computeOrderRowCounts(){
+  ORDER_ROW_COUNTS = {};
+  raw.forEach(r=>{
+    const o = String(r?.order||'').trim();
+    if(o && o !== '-') ORDER_ROW_COUNTS[o] = (ORDER_ROW_COUNTS[o]||0) + 1;
+  });
+}
+
 function ovKey(r){
   const o = String(r?.order||'').trim();
-  if(o && o !== '-') return o;
+  const t = String(r?.dateTime || r?.date || '').trim();
+  if(o && o !== '-'){
+    // Only disambiguate with a timestamp when this order number actually
+    // has more than one complaint row — keeps the key unchanged (bare
+    // order number) for the common single-complaint case, so existing
+    // saved overrides for those orders keep matching and don't reset.
+    if((ORDER_ROW_COUNTS[o]||0) > 1 && t) return o + '@' + t;
+    return o;
+  }
   // Use the full timestamp (dateTime), not the day-only `date`, so two
   // different no-order complaints submitted on the same calendar day get
   // distinct keys instead of silently sharing/overwriting one save slot.
   // Falls back to `date` for older embedded/offline data that never had
   // a dateTime field.
-  return '-@' + String(r?.dateTime || r?.date || '').trim();
+  return '-@' + t;
 }
 
 function applyOverrideRows(rows){
@@ -1451,6 +1507,12 @@ function applyOverrideRows(rows){
     }
     if(ov.Emailed) freshE[orderKey] = ov.Emailed;
   });
+
+  applyPendingShield(freshP, 'P');
+  applyPendingShield(freshS, 'S');
+  applyPendingShield(freshA, 'A');
+  applyPendingShield(freshD, 'D');
+  applyPendingShield(freshC, 'C');
 
   let changed = false;
   function reconcile(store, fresh){
@@ -1916,6 +1978,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
 function chgP(idx, sel){
   OVR_P[idx] = sel.value;
   saveP();
+  markPendingWrite(idx, 'P', sel.value);
   pushOverride(ovKey(raw[idx]), 'P', sel.value);
   sel.className = 'sel-p p-'+sel.value;
   const par = sel.closest('tr');
@@ -1940,6 +2003,7 @@ function logChangeToComment(idx, description){
   const fullVal  = existing ? `${existing} / ${entry}` : entry;
   OVR_C[idx] = fullVal;
   saveC();
+  markPendingWrite(idx, 'C', fullVal);
 
   // Sync to Sheets so every teammate sees it
   if(raw[idx]) pushOverride(ovKey(raw[idx]), 'C', fullVal);
@@ -1957,6 +2021,7 @@ function logChangeToComment(idx, description){
 function chgS(idx, sel){
   OVR_S[idx] = sel.value;
   saveS();
+  markPendingWrite(idx, 'S', sel.value);
   pushOverride(ovKey(raw[idx]), 'S', sel.value);
   logChangeToComment(idx, `Status → ${sel.value}`);
   sel.className = 'sel-s s-'+statusSlug(sel.value);
@@ -1968,6 +2033,7 @@ function chgS(idx, sel){
 function chgA(idx, sel){
   OVR_A[idx] = sel.value;
   saveA();
+  markPendingWrite(idx, 'A', sel.value);
   pushOverride(ovKey(raw[idx]), 'A', sel.value);
   logChangeToComment(idx, `Action → ${sel.value}`);
   const css = sel.value==='No Action'?'a-NoAction':'a-'+sel.value;
@@ -1980,6 +2046,7 @@ function chgA(idx, sel){
 function chgDept(idx, sel){
   OVR_D[idx] = sel.value;
   saveD();
+  markPendingWrite(idx, 'D', sel.value);
   pushOverride(ovKey(raw[idx]), 'D', sel.value);
   logChangeToComment(idx, `Dept → ${sel.value}`);
   sel.className = 'sel-d d-'+(DEPT_CSS[sel.value]||'').replace('d-','');
@@ -2008,6 +2075,7 @@ function chgC(idx, el){
   const log = getCL(idx);
   const lastEntry = log.length ? log[log.length-1] : '';
   const fullVal = (val && lastEntry) ? `${val} — ${lastEntry}` : val;
+  markPendingWrite(idx, 'C', fullVal);
   pushOverride(ovKey(raw[idx]), 'C', fullVal);
   // Update log display in DOM without full re-render
   const logEl = el.closest('td')?.querySelector('.comment-log');
@@ -3508,6 +3576,7 @@ async function refreshComplaintData(){
     if(!newOnes.length) return false;
     raw = raw.concat(newOnes);
     data = raw.map((r,i)=>({...r,idx:i}));
+    computeOrderRowCounts();
     populateCatDropdown();
     return true;
   } catch(e){
@@ -3779,6 +3848,7 @@ async function loadData(){
     const rows = parseCSV(text);
     raw  = csvToRaw(rows);
     data = raw.map((r,i)=>({...r,idx:i}));
+    computeOrderRowCounts();
   } catch(err){
     console.error('Sheet load failed:', err);
     const isFileProtocol = location.protocol === 'file:';
@@ -3786,6 +3856,7 @@ async function loadData(){
       // Silently use embedded data when opened as a local file
       raw  = EMBEDDED_DATA;
       data = raw.map((r,i)=>({...r,idx:i}));
+      computeOrderRowCounts();
       console.log('[AMS] Using embedded data (file:// detected):',raw.length,'rows');
       return true;
     }
