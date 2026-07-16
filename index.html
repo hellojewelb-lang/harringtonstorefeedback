@@ -1325,27 +1325,57 @@ function renderBulkBar(){
 // ── Google Sheets sync ──────────────────────────────────────
 // Sequential write queue — prevents two simultaneous writes (e.g. field + auto-comment)
 // from hitting Apps Script at the same time, which can cause one to silently fail.
+// Failed writes are retried with backoff instead of being silently dropped —
+// a teammate's edit only ever reaches other people once it actually lands
+// on the sheet, so a write that fails once (network hiccup, Apps Script
+// briefly unavailable) must not just vanish.
 const _writeQ = [];
 let _writeBusy = false;
+const WRITE_MAX_RETRIES = 5;
+
+function showSyncFailureBanner(field, errMsg){
+  let bar = document.getElementById('syncFailBanner');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'syncFailBanner';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:#7f1d1d;color:#fff;padding:8px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    document.body.prepend(bar);
+  }
+  bar.innerHTML = `⚠️ A change (${field}) could not be saved after several attempts — check your connection, then <button style="background:#fff;color:#7f1d1d;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer" onclick="location.reload()">reload and redo it</button> <span style="opacity:.8;font-weight:500">(${errMsg||'unknown error'})</span>`;
+}
 
 async function _flushWrites(){
   if(_writeBusy || !_writeQ.length) return;
   _writeBusy = true;
   while(_writeQ.length){
-    const {url, field} = _writeQ.shift();
+    const item = _writeQ.shift();
+    const {url, field} = item;
+    const retries = item.retries || 0;
+    let ok = false, errMsg = '';
     try{
       const res  = await fetch(url, {cache:'no-store'});
       const json = await res.json().catch(()=>null);
       if(json && json.success){
+        ok = true;
         const t = new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
         setSyncStatus(`saved ${t} (${field})`, true);
       } else {
-        setSyncStatus(`save failed (${field}): ${json?.error||'unknown'}`, false);
+        errMsg = json?.error || 'unknown';
         console.warn('[AMS] Write returned error:', json);
       }
     } catch(e){
-      setSyncStatus(`save error: ${e.message}`, false);
+      errMsg = e.message;
       console.warn('[AMS] Write threw:', e);
+    }
+    if(!ok){
+      if(retries < WRITE_MAX_RETRIES){
+        setSyncStatus(`retrying save (${field}, attempt ${retries+1})…`, false);
+        const backoff = Math.min(30000, 1000 * Math.pow(2, retries)); // 1s,2s,4s,8s,16s,30s(cap)
+        setTimeout(()=>{ _writeQ.push({...item, retries: retries+1}); _flushWrites(); }, backoff);
+      } else {
+        setSyncStatus(`save failed (${field}): ${errMsg}`, false);
+        showSyncFailureBanner(field, errMsg);
+      }
     }
     if(_writeQ.length) await new Promise(r=>setTimeout(r,400));
   }
@@ -3651,6 +3681,36 @@ document.addEventListener('visibilitychange', ()=>{
 });
 // Paste your deployed Apps Script URL here (see 2026-06-20-google-apps-script.js for setup)
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnWMWGdOU72HJ8cE16NLIzAmzqw-QSZFFocolK_5Yatuy-rp8oQPQEMCh9DJ2ysNSbBA/exec';
+
+// ── Version-check — catches browsers running a stale cached copy ──────
+// When Jewel uploads a new index.html to GitHub, teammates who already
+// have the dashboard open in an active tab won't get it: the existing
+// "reload after coming back from a hidden tab" logic above only fires once
+// a tab has been backgrounded for 3+ minutes, and GitHub Pages/browser HTTP
+// caching can also keep serving the old file on a plain refresh. Anyone
+// running old JS will keep hitting bugs that were already fixed, with no
+// visible sign why. This bumps a version string embedded in the file
+// itself; every 90s each open tab re-fetches its own HTML (bypassing
+// cache) and compares versions, showing an unmissable "reload to update"
+// banner instead of forcing a reload that could interrupt someone mid-edit.
+const DASHBOARD_VERSION = '2026-07-16-4';
+function showUpdateBanner(){
+  if(document.getElementById('updateBanner')) return; // already showing
+  const bar = document.createElement('div');
+  bar.id = 'updateBanner';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:#1a1a2e;color:#fff;padding:8px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+  bar.innerHTML = `🔄 A newer version of this dashboard is available <button style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer" onclick="location.reload()">Reload now</button>`;
+  document.body.prepend(bar);
+}
+async function checkForNewVersion(){
+  try{
+    const res = await fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' });
+    const text = await res.text();
+    const m = text.match(/DASHBOARD_VERSION\s*=\s*'([^']+)'/);
+    if(m && m[1] && m[1] !== DASHBOARD_VERSION) showUpdateBanner();
+  } catch(e){ /* ignore — not worth surfacing a failed version check */ }
+}
+setInterval(checkForNewVersion, 90000);
 
 function parseCSV(str){
   const rows = []; let row = [], cur = '', inQ = false;
