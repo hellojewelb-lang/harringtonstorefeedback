@@ -1272,7 +1272,7 @@ function applyBulkField(kind, val){
   const n = BULK_SEL.size;
   BULK_SEL.forEach(idx=>{
     m.store[idx] = val;
-    pushOverride(raw[idx]?.order, m.code, val);
+    pushOverride(ovKey(raw[idx]), m.code, val);
     logChangeToComment(idx, `${m.label} → ${val} (bulk update)`);
   });
   m.save();
@@ -1385,6 +1385,23 @@ const OVERRIDES_SHEET_ID   = '17vpUK2kruiG4J_gfkXtdW4AE3OkHT4qpteBqLedoUyQ';
 // localStorage. That's why two teammates could see different Urgent counts
 // even after both had "successfully synced." Reconciling fully each time
 // means every browser's state converges to the shared sheet, always.
+
+// Unique key for the Status/Action override system — separate from what's
+// *displayed* as the Order Number. Complaints with a real order number keep
+// using it as-is (unchanged, so existing sheet rows still match). Complaints
+// with no order number all normalize to the same "-" placeholder (see
+// normalizeOrder) — which is NOT unique, so dozens of different complaints
+// were colliding on one shared save slot: whoever last touched any of them
+// overwrote the others, and a fresh session had no way to tell them apart.
+// For those, key on Order+Date instead — every submission has its own
+// timestamp, and this is the same uniqueness rule already used elsewhere
+// (see refreshComplaintData's own dedup key).
+function ovKey(r){
+  const o = String(r?.order||'').trim();
+  if(o && o !== '-') return o;
+  return '-@' + String(r?.date||'').trim();
+}
+
 function applyOverrideRows(rows){
   // Match tolerant of a leading "#" on either side — raw[i].order is always
   // normalized to "#12345" (see normalizeOrder), but the sheet's OrderNumber
@@ -1394,11 +1411,14 @@ function applyOverrideRows(rows){
   // end up disagreeing on the same order's status.
   const orderToIdx = {};
   raw.forEach((r,i)=>{
-    if(!r.order) return;
-    const k = String(r.order).trim();
+    const k = ovKey(r);
     orderToIdx[k] = i;
-    orderToIdx[k.replace(/^#/,'')] = i;
-    orderToIdx['#'+k.replace(/^#/,'')] = i;
+    // "#" tolerance only makes sense for real order numbers — a synthetic
+    // "-@<date>" fallback key should be matched exactly, never mangled.
+    if(!k.startsWith('-@')){
+      orderToIdx[k.replace(/^#/,'')] = i;
+      orderToIdx['#'+k.replace(/^#/,'')] = i;
+    }
   });
 
   const freshP = {}, freshS = {}, freshA = {}, freshD = {}, freshC = {}, freshE = {};
@@ -1412,8 +1432,10 @@ function applyOverrideRows(rows){
       renderPresence();
       return;
     }
-    // Canonicalize to the "#..." form used as the freshE key, matching raw[i].order
-    const orderKey = orderKeyRaw ? (orderKeyRaw.startsWith('#') ? orderKeyRaw : '#'+orderKeyRaw) : orderKeyRaw;
+    // Canonicalize to the "#..." form used as the freshE key, matching raw[i].order —
+    // but leave synthetic "-@<date>" keys alone, they're already exact.
+    const orderKey = orderKeyRaw.startsWith('-@') ? orderKeyRaw
+                    : (orderKeyRaw ? (orderKeyRaw.startsWith('#') ? orderKeyRaw : '#'+orderKeyRaw) : orderKeyRaw);
     const idx = orderToIdx[orderKeyRaw] ?? orderToIdx[orderKey] ?? orderToIdx[orderKeyRaw.replace(/^#/,'')];
     if(idx !== undefined){
       if(ov.P) freshP[idx] = ov.P;
@@ -1628,7 +1650,7 @@ function getA(i){ return OVR_A[i] ?? raw[i]?.action ?? 'Log'; }
 // can see at a glance which flagged items are actually still outstanding.
 function isHandled(i){ return getS(i)==='Resolved'; }
 function isUrgent(i){ return !isHandled(i) && getA(i)==='URGENT'; }
-function needsAttn(i){ return !isHandled(i) && NEEDS_ATT.has(getA(i)) && !OVR_E[String(raw[i]?.order||'').trim()]; }
+function needsAttn(i){ return !isHandled(i) && NEEDS_ATT.has(getA(i)) && !OVR_E[ovKey(raw[i])]; }
 // Full set of progress statuses a complaint can be in, in workflow order.
 // "Waiting on Supplier/Customer" let the team see exactly what a stalled item
 // is stuck waiting on, instead of a generic "Ongoing".
@@ -1840,7 +1862,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
     const s = getS(r.idx), p = getP(r.idx), a = getA(r.idx);
     const isUrg = isUrgent(r.idx);
     const isRes = s==='Resolved';
-    const emailedStamp = OVR_E[String(r.order||'').trim()] || '';
+    const emailedStamp = OVR_E[ovKey(r)] || '';
     const dateCol = showDate ? `<td class="col-date">${fmt(r.date)}</td>` : '';
     return `<tr data-idx="${r.idx}" class="${isUrg?'row-urg':''} ${isRes?'row-resolved':''}">
       <td><input type="checkbox" class="bulk-cb" data-idx="${r.idx}" ${BULK_SEL.has(r.idx)?'checked':''} onchange="toggleBulkSel(${r.idx},this.checked)"></td>
@@ -1889,7 +1911,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
 function chgP(idx, sel){
   OVR_P[idx] = sel.value;
   saveP();
-  pushOverride(raw[idx]?.order, 'P', sel.value);
+  pushOverride(ovKey(raw[idx]), 'P', sel.value);
   sel.className = 'sel-p p-'+sel.value;
   const par = sel.closest('tr');
   if(par){ par.className = sel.value==='Critical'?'row-urg':''; }
@@ -1915,7 +1937,7 @@ function logChangeToComment(idx, description){
   saveC();
 
   // Sync to Sheets so every teammate sees it
-  if(raw[idx]?.order) pushOverride(raw[idx].order, 'C', fullVal);
+  if(raw[idx]) pushOverride(ovKey(raw[idx]), 'C', fullVal);
 
   // Update comment input + log in the DOM immediately
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
@@ -1930,7 +1952,7 @@ function logChangeToComment(idx, description){
 function chgS(idx, sel){
   OVR_S[idx] = sel.value;
   saveS();
-  pushOverride(raw[idx]?.order, 'S', sel.value);
+  pushOverride(ovKey(raw[idx]), 'S', sel.value);
   logChangeToComment(idx, `Status → ${sel.value}`);
   sel.className = 'sel-s s-'+statusSlug(sel.value);
   const par = sel.closest('tr');
@@ -1941,7 +1963,7 @@ function chgS(idx, sel){
 function chgA(idx, sel){
   OVR_A[idx] = sel.value;
   saveA();
-  pushOverride(raw[idx]?.order, 'A', sel.value);
+  pushOverride(ovKey(raw[idx]), 'A', sel.value);
   logChangeToComment(idx, `Action → ${sel.value}`);
   const css = sel.value==='No Action'?'a-NoAction':'a-'+sel.value;
   sel.className = 'sel-a '+css;
@@ -1953,7 +1975,7 @@ function chgA(idx, sel){
 function chgDept(idx, sel){
   OVR_D[idx] = sel.value;
   saveD();
-  pushOverride(raw[idx]?.order, 'D', sel.value);
+  pushOverride(ovKey(raw[idx]), 'D', sel.value);
   logChangeToComment(idx, `Dept → ${sel.value}`);
   sel.className = 'sel-d d-'+(DEPT_CSS[sel.value]||'').replace('d-','');
   renderTabBadges();
@@ -1981,7 +2003,7 @@ function chgC(idx, el){
   const log = getCL(idx);
   const lastEntry = log.length ? log[log.length-1] : '';
   const fullVal = (val && lastEntry) ? `${val} — ${lastEntry}` : val;
-  pushOverride(raw[idx]?.order, 'C', fullVal);
+  pushOverride(ovKey(raw[idx]), 'C', fullVal);
   // Update log display in DOM without full re-render
   const logEl = el.closest('td')?.querySelector('.comment-log');
   if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
@@ -3401,7 +3423,7 @@ function markEmailed(){
   if(_emailIdx === null) return;
   const r = raw[_emailIdx];
   if(!r) return;
-  const orderKey = String(r.order||'').trim();
+  const orderKey = ovKey(r);
   // Netherlands timestamp
   const ts = new Date().toLocaleString('nl-NL',{timeZone:'Europe/Amsterdam',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   OVR_E[orderKey] = ts;
@@ -3434,7 +3456,7 @@ function copyEmailMessage(){
 function unmarkEmailed(idx){
   const r = raw[idx];
   if(!r) return;
-  const orderKey = String(r.order||'').trim();
+  const orderKey = ovKey(r);
   delete OVR_E[orderKey];
   saveE();
   pushOverride(orderKey, 'Emailed', ''); // clears it in Apps Script
