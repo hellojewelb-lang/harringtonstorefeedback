@@ -24,6 +24,11 @@
 .comment-by{font-size:10px;color:#6b7280;font-style:italic;line-height:1.5;border-top:1px dashed #e5e7eb;padding-top:2px;margin-top:1px}
 .comment-by:first-child{border-top:none;padding-top:0;margin-top:2px}
 [data-theme="dark"] .comment-by{color:#94a3b8;border-top-color:#374151}
+.btn-save-note{display:block;margin:4px 0 0 auto;font-size:11px;font-weight:600;color:#fff;background:#6366f1;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;transition:background .15s}
+.btn-save-note:hover{background:#4f46e5}
+.btn-save-note:active{background:#4338ca}
+[data-theme="dark"] .btn-save-note{background:#818cf8}
+[data-theme="dark"] .btn-save-note:hover{background:#6366f1}
 .name-change-btn{font-size:10px;color:#6b7280;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0}
 .name-change-btn:hover{color:#4f46e5}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#eef0f5;color:#1a1a2e;font-size:13px;transition:background .25s,color .25s}
@@ -1210,12 +1215,44 @@ function saveA(){ try{ localStorage.setItem('ams_a', JSON.stringify(OVR_A)); }ca
 function saveD(){ try{ localStorage.setItem('ams_d', JSON.stringify(OVR_D)); }catch(e){} }
 function saveC(){ try{ localStorage.setItem('ams_c', JSON.stringify(OVR_C)); }catch(e){} }
 function getC(i){ return OVR_C[i] ?? ''; }
-// Comment log: full history of who updated and when — array of "Name · Date Time" strings per idx
+
+// ── Note history ─────────────────────────────────────────────
+// Every time a note is saved, it's recorded here as its own entry — not just
+// "who/when" but the actual text that was saved, so the box can always show
+// the LATEST note while the last couple of PRIOR versions stay visible right
+// underneath it. Built from two sources merged together: our own saves
+// (added immediately, for instant feedback) and the shared Change Log (every
+// teammate's saves, arriving via the 10s poll) — so nothing gets lost and
+// nothing depends on last-writer-wins.
+// idx -> array of {text, who, dateStr, ts} sorted oldest → newest.
+let OVR_NOTE_HIST = {};
+try { OVR_NOTE_HIST = JSON.parse(localStorage.getItem('ams_nh') || '{}'); } catch(e){}
+function saveNH(){ try{ localStorage.setItem('ams_nh', JSON.stringify(OVR_NOTE_HIST)); }catch(e){} }
+
+// Returns true if this actually added a new entry (so callers know whether
+// the table needs to redraw to show it).
+function addNoteHistEntry(idx, entry){
+  if(!entry || !entry.text) return false;
+  if(!OVR_NOTE_HIST[idx]) OVR_NOTE_HIST[idx] = [];
+  const list = OVR_NOTE_HIST[idx];
+  // De-dupe: the same save can arrive twice (once optimistically when we
+  // saved it, once again from the Change Log once it syncs back down) —
+  // treat same text+person within a few minutes of each other as the same event.
+  const dup = list.some(e => e.text === entry.text && e.who === entry.who &&
+    Math.abs(new Date(e.ts || 0).getTime() - new Date(entry.ts || 0).getTime()) < 5*60*1000);
+  if(dup) return false;
+  list.push(entry);
+  list.sort((a,b) => String(a.ts||'').localeCompare(String(b.ts||'')));
+  if(list.length > 10) OVR_NOTE_HIST[idx] = list.slice(-10);
+  saveNH();
+  return true;
+}
+
+// Legacy alias — old local-only log, kept only so any stray reference doesn't break.
 let OVR_CL = {};
 try { OVR_CL = JSON.parse(localStorage.getItem('ams_cl') || '{}'); } catch(e){}
 function saveCL(){ try{ localStorage.setItem('ams_cl', JSON.stringify(OVR_CL)); }catch(e){} }
-// Remote activity log — built from the Change Log sheet.
-// Includes every teammate's notes, never overwritten by concurrent writes.
+// Remote activity log — built from the Change Log sheet, for non-comment fields.
 let OVR_ACTIVITY = {};
 // Timestamp (ISO) of the most recent Status change per row idx, derived from the
 // Change Log sheet — powers the "waiting since" label on stalled items.
@@ -1229,10 +1266,14 @@ function waitingSinceLabel(idx){
   return days + ' days';
 }
 
+// Returns the last 2 PRIOR note versions (excluding whatever's currently
+// shown live in the box) formatted as "note text — Who · date", newest first.
 function getCL(i){
-  // Prefer remote activity (all teammates) over local-only log
-  if(OVR_ACTIVITY[i] && OVR_ACTIVITY[i].length) return OVR_ACTIVITY[i];
-  return OVR_CL[i] ?? [];
+  const list = OVR_NOTE_HIST[i] || [];
+  const cur = getC(i);
+  let hist = list;
+  if(hist.length && hist[hist.length-1].text === cur) hist = hist.slice(0, -1);
+  return hist.slice(-2).reverse().map(e => `${e.text} — ${e.who}${e.dateStr ? ` · ${e.dateStr}` : ''}`);
 }
 
 // OVR_E: emailed status — keyed by order number string, value = timestamp string
@@ -1274,7 +1315,6 @@ function applyBulkField(kind, val){
     m.store[idx] = val;
     markPendingWrite(idx, m.code, val);
     pushOverride(ovKey(raw[idx]), m.code, val);
-    logChangeToComment(idx, `${m.label} → ${val} (bulk update)`);
   });
   m.save();
   renderTabBadges();
@@ -1594,6 +1634,7 @@ function applyChangeLogRows(rows){
 
   const byIdx = {};
   const statusSince = {}; // idx -> latest ISO timestamp where Field === 'Status'
+  let noteHistChanged = false;
   rows.forEach(row=>{
     const ts  = String(row['Timestamp']   || '').trim();
     const who = String(row['Username']    || '').trim();
@@ -1614,15 +1655,15 @@ function applyChangeLogRows(rows){
       catch(e){ dateStr = ts.slice(0,16); }
     }
 
-    // Format activity label
-    let label = '';
+    // Comment (note) saves get tracked in their own per-save history — the
+    // note box's "last 2 history" — never mixed with Status/Action/Dept
+    // activity, and never collapsed to one entry per person.
     if(fld === 'Comment'){
-      // The note text itself lives in the box (OVR_C) — under the box we only
-      // show who touched it and when, never the note text repeated.
-      label = who ? `${who} · ${dateStr}` : (dateStr || '');
-    } else {
-      label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
+      if(val && addNoteHistEntry(idx, { text: val, who, dateStr, ts })) noteHistChanged = true;
+      return;
     }
+
+    const label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
     if(!label) return;
 
     if(!byIdx[idx]) byIdx[idx] = [];
@@ -1630,7 +1671,7 @@ function applyChangeLogRows(rows){
   });
 
   // Sort oldest→newest, keep last 6 per order, detect changes
-  let changed = false;
+  let changed = noteHistChanged;
   Object.keys(byIdx).forEach(idx=>{
     const sorted = byIdx[idx]
       .sort((a,b)=>a.ts<b.ts?-1:a.ts>b.ts?1:0)
@@ -1920,10 +1961,11 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
   const tbody = document.getElementById(tbodyId);
   // Preserve a note someone is actively typing — the 10s background poll
   // rebuilds this whole table whenever ANY teammate's update comes in, and
-  // notes only save to OVR_C on blur (see chgC). Without this, typing a note
-  // and having a poll land before you click away wipes what you typed. We
-  // capture the in-progress text + cursor position here and restore it onto
-  // the freshly-rebuilt textarea below, so it's never lost mid-type.
+  // notes only save when the Save button is clicked (see chgC/saveNote).
+  // Without this, typing a note and having a poll land before you click Save
+  // wipes what you typed. We capture the in-progress text + cursor position
+  // here and restore it onto the freshly-rebuilt textarea below, so it's
+  // never lost mid-type.
   let _focusedNote = null;
   const activeEl = document.activeElement;
   if(tbody && activeEl && activeEl.classList && activeEl.classList.contains('comment-inp') && tbody.contains(activeEl)){
@@ -2018,7 +2060,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
         </select>
         ${(s==='Waiting on Supplier'||s==='Waiting on Customer') && waitingSinceLabel(r.idx) ? `<div class="wait-since">⏳ waiting ${waitingSinceLabel(r.idx)}</div>` : ''}
       </td>
-      <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
+      <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><button type="button" class="btn-save-note" onclick="saveNote(${r.idx},this)" title="Save this note">Save</button><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
 
@@ -2044,37 +2086,18 @@ function chgP(idx, sel){
   renderTabBadges();
   renderSidebarDebounced();
 }
-// Logs a status/action/dept change into the activity log shown UNDER the note
-// box — never into the note box's own text. The field's own pushOverride
-// call (from chgS/chgA/chgDept) already records this change server-side in
-// the Change Log with the correct field label, so this just gives instant
-// local feedback without touching OVR_C (which must stay exactly what the
-// person typed, nothing else).
-function logChangeToComment(idx, description){
-  const name = localStorage.getItem('ams_username') || 'Unknown';
-  const now  = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  const entry = `${name}: ${description} · ${now}`;
-
-  // Append to local comment log only
-  if(!OVR_CL[idx]) OVR_CL[idx] = [];
-  OVR_CL[idx].push(entry);
-  if(OVR_CL[idx].length > 5) OVR_CL[idx] = OVR_CL[idx].slice(-5); // keep last 5
-  saveCL();
-
-  // Update the log display in the DOM immediately — leave the note box itself alone.
-  const tr = document.querySelector(`tr[data-idx="${idx}"]`);
-  if(tr){
-    const logEl = tr.querySelector('.comment-log');
-    if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
-  }
-}
+// Status/Action/Dept changes are recorded automatically by the server the
+// moment their own pushOverride call lands (Apps Script logs every field
+// write to the Change Log under its own label — "Status", "Action",
+// "Department"). Nothing needs to inject those into the note box or its
+// history here; that log stays exclusively about note text (see getCL/
+// OVR_NOTE_HIST above), never mixed with other field changes.
 
 function chgS(idx, sel){
   OVR_S[idx] = sel.value;
   saveS();
   markPendingWrite(idx, 'S', sel.value);
   pushOverride(ovKey(raw[idx]), 'S', sel.value);
-  logChangeToComment(idx, `Status → ${sel.value}`);
   sel.className = 'sel-s s-'+statusSlug(sel.value);
   const par = sel.closest('tr');
   if(par) par.classList.toggle('row-resolved', sel.value==='Resolved');
@@ -2086,7 +2109,6 @@ function chgA(idx, sel){
   saveA();
   markPendingWrite(idx, 'A', sel.value);
   pushOverride(ovKey(raw[idx]), 'A', sel.value);
-  logChangeToComment(idx, `Action → ${sel.value}`);
   const css = sel.value==='No Action'?'a-NoAction':'a-'+sel.value;
   sel.className = 'sel-a '+css;
   const par = sel.closest('tr');
@@ -2099,7 +2121,6 @@ function chgDept(idx, sel){
   saveD();
   markPendingWrite(idx, 'D', sel.value);
   pushOverride(ovKey(raw[idx]), 'D', sel.value);
-  logChangeToComment(idx, `Dept → ${sel.value}`);
   sel.className = 'sel-d d-'+(DEPT_CSS[sel.value]||'').replace('d-','');
   renderTabBadges();
   renderSidebarDebounced();
@@ -2107,30 +2128,35 @@ function chgDept(idx, sel){
 function chgC(idx, el){
   const val = el.value.trim();
   const prevVal = OVR_C[idx] || '';
-  if(val === prevVal) return; // nothing actually changed (e.g. clicked in/out without typing) — don't log a blank entry
+  if(val === prevVal) return; // nothing actually changed — don't log a no-op save
   if(val) OVR_C[idx] = val; else delete OVR_C[idx];
   saveC();
-  const name = localStorage.getItem('ams_username') || '';
-  const now  = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  if(name && val){
-    if(!OVR_CL[idx]) OVR_CL[idx] = [];
-    // Remove any existing entry from this same person (no duplicates per person)
-    OVR_CL[idx] = OVR_CL[idx].filter(e => !e.startsWith(name + ' ·'));
-    // Add updated entry for this person
-    OVR_CL[idx].push(`${name} · ${now}`);
-    // Keep only the last 2 unique people
-    OVR_CL[idx] = OVR_CL[idx].slice(-2);
-    saveCL();
-  }
+  const name = localStorage.getItem('ams_username') || 'Unknown';
+  const now    = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const nowISO = new Date().toISOString();
+  // Record this save as its own history entry — every update gets logged,
+  // not just the latest one per person.
+  if(val) addNoteHistEntry(idx, { text: val, who: name, dateStr: now, ts: nowISO });
   // Push the note text as-is — never bake "who/when" into the saved note
-  // itself. That used to get written back down from the sheet and permanently
-  // stick inside the note box; attribution belongs only in the log line
-  // shown under the box (OVR_CL / Change Log), never in the note content.
+  // itself. Attribution + prior text belong only in the history shown
+  // under the box (OVR_NOTE_HIST / Change Log), never mixed into the note content.
   markPendingWrite(idx, 'C', val);
   pushOverride(ovKey(raw[idx]), 'C', val);
   // Update log display in DOM without full re-render
   const logEl = el.closest('td')?.querySelector('.comment-log');
   if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
+}
+
+// Save button handler — notes only save when this is clicked, never just by
+// clicking away, so a half-written note can't get saved by accident and a
+// fully-written one never gets lost waiting for a blur that may not come.
+function saveNote(idx, btn){
+  const td = btn.closest('td');
+  const el = td ? td.querySelector('.comment-inp') : null;
+  if(!el) return;
+  const before = OVR_C[idx] || '';
+  chgC(idx, el);
+  if(el.value.trim() !== before) showToast('📝 Note saved');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3642,7 +3668,8 @@ async function syncAndRender(){
   // Show Change Log status appended to the sync line so it's always visible
   const el = document.getElementById('syncStatus');
   if(el){
-    const clTotal = Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length, 0);
+    const clTotal = Object.values(OVR_ACTIVITY).reduce((s,v)=>s+v.length, 0)
+                  + Object.values(OVR_NOTE_HIST).reduce((s,v)=>s+v.length, 0);
     if(clTotal > 0){
       el.textContent += ` · 📋 ${clTotal} log entries`;
     } else {
