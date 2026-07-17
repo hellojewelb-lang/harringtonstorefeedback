@@ -1617,10 +1617,9 @@ function applyChangeLogRows(rows){
     // Format activity label
     let label = '';
     if(fld === 'Comment'){
-      // val may be an accumulated string — take the last segment after " / "
-      const parts = val.split(' / ');
-      const last  = parts[parts.length-1].trim();
-      label = last.includes(' · ') ? last : (last + (dateStr ? ` · ${dateStr}` : ''));
+      // The note text itself lives in the box (OVR_C) — under the box we only
+      // show who touched it and when, never the note text repeated.
+      label = who ? `${who} · ${dateStr}` : (dateStr || '');
     } else {
       label = `${who} → ${fld}: ${val}${dateStr ? ` · ${dateStr}` : ''}`;
     }
@@ -1919,6 +1918,25 @@ function renderSidebar(rows, periodLabel){
 // ═══════════════════════════════════════════════════════════
 function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
   const tbody = document.getElementById(tbodyId);
+  // Preserve a note someone is actively typing — the 10s background poll
+  // rebuilds this whole table whenever ANY teammate's update comes in, and
+  // notes only save to OVR_C on blur (see chgC). Without this, typing a note
+  // and having a poll land before you click away wipes what you typed. We
+  // capture the in-progress text + cursor position here and restore it onto
+  // the freshly-rebuilt textarea below, so it's never lost mid-type.
+  let _focusedNote = null;
+  const activeEl = document.activeElement;
+  if(tbody && activeEl && activeEl.classList && activeEl.classList.contains('comment-inp') && tbody.contains(activeEl)){
+    const tr = activeEl.closest('tr[data-idx]');
+    if(tr){
+      _focusedNote = {
+        idx: tr.getAttribute('data-idx'),
+        value: activeEl.value,
+        selStart: activeEl.selectionStart,
+        selEnd: activeEl.selectionEnd
+      };
+    }
+  }
   const empty = document.getElementById(emptyId);
   const meta  = metaId ? document.getElementById(metaId) : null;
   const total = rows.length;
@@ -2003,6 +2021,16 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
       <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
+
+  // Restore whatever the person was mid-typing before this redraw wiped it.
+  if(_focusedNote){
+    const restored = tbody.querySelector(`tr[data-idx="${_focusedNote.idx}"] .comment-inp`);
+    if(restored){
+      restored.value = _focusedNote.value;
+      restored.focus();
+      try{ restored.setSelectionRange(_focusedNote.selStart, _focusedNote.selEnd); }catch(e){}
+    }
+  }
 }
 
 function chgP(idx, sel){
@@ -2016,35 +2044,28 @@ function chgP(idx, sel){
   renderTabBadges();
   renderSidebarDebounced();
 }
-// Auto-logs a status/action/dept change into the comment field so everyone sees who did it.
+// Logs a status/action/dept change into the activity log shown UNDER the note
+// box — never into the note box's own text. The field's own pushOverride
+// call (from chgS/chgA/chgDept) already records this change server-side in
+// the Change Log with the correct field label, so this just gives instant
+// local feedback without touching OVR_C (which must stay exactly what the
+// person typed, nothing else).
 function logChangeToComment(idx, description){
   const name = localStorage.getItem('ams_username') || 'Unknown';
   const now  = new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const entry = `${name}: ${description} · ${now}`;
 
-  // Append to local comment log
+  // Append to local comment log only
   if(!OVR_CL[idx]) OVR_CL[idx] = [];
   OVR_CL[idx].push(entry);
   if(OVR_CL[idx].length > 5) OVR_CL[idx] = OVR_CL[idx].slice(-5); // keep last 5
   saveCL();
 
-  // Build the full C value: existing comment text + activity entry
-  const existing = OVR_C[idx] || '';
-  const fullVal  = existing ? `${existing} / ${entry}` : entry;
-  OVR_C[idx] = fullVal;
-  saveC();
-  markPendingWrite(idx, 'C', fullVal);
-
-  // Sync to Sheets so every teammate sees it
-  if(raw[idx]) pushOverride(ovKey(raw[idx]), 'C', fullVal);
-
-  // Update comment input + log in the DOM immediately
+  // Update the log display in the DOM immediately — leave the note box itself alone.
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
   if(tr){
-    const inp = tr.querySelector('.comment-inp');
-    if(inp && document.activeElement !== inp) inp.value = fullVal;
     const logEl = tr.querySelector('.comment-log');
-    if(logEl) logEl.innerHTML = OVR_CL[idx].map(e=>`<div class="comment-by">${e}</div>`).join('');
+    if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
   }
 }
 
@@ -2101,12 +2122,12 @@ function chgC(idx, el){
     OVR_CL[idx] = OVR_CL[idx].slice(-2);
     saveCL();
   }
-  // Push to Google Sheets — include last log entry as attribution
-  const log = getCL(idx);
-  const lastEntry = log.length ? log[log.length-1] : '';
-  const fullVal = (val && lastEntry) ? `${val} — ${lastEntry}` : val;
-  markPendingWrite(idx, 'C', fullVal);
-  pushOverride(ovKey(raw[idx]), 'C', fullVal);
+  // Push the note text as-is — never bake "who/when" into the saved note
+  // itself. That used to get written back down from the sheet and permanently
+  // stick inside the note box; attribution belongs only in the log line
+  // shown under the box (OVR_CL / Change Log), never in the note content.
+  markPendingWrite(idx, 'C', val);
+  pushOverride(ovKey(raw[idx]), 'C', val);
   // Update log display in DOM without full re-render
   const logEl = el.closest('td')?.querySelector('.comment-log');
   if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
