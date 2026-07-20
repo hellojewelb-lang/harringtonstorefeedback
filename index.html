@@ -1959,13 +1959,14 @@ function renderSidebar(rows, periodLabel){
 // ═══════════════════════════════════════════════════════════
 function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
   const tbody = document.getElementById(tbodyId);
-  // Preserve a note someone is actively typing — the 10s background poll
-  // rebuilds this whole table whenever ANY teammate's update comes in, and
-  // notes only save when the Save button is clicked (see chgC/saveNote).
-  // Without this, typing a note and having a poll land before you click Save
-  // wipes what you typed. We capture the in-progress text + cursor position
-  // here and restore it onto the freshly-rebuilt textarea below, so it's
-  // never lost mid-type.
+  // Preserve a note someone is actively typing — a note only saves when the
+  // box loses focus or the Save button is clicked (see chgC/saveNote), so
+  // while someone's mid-type their edit exists only in the DOM, nowhere else.
+  // If a background poll rebuilds this table before that happens, the old
+  // code would silently replace the box with its last-saved value, wiping
+  // what they typed. We capture the in-progress text + cursor position here
+  // and restore it onto the freshly-rebuilt textarea below, so it's never
+  // lost mid-type.
   let _focusedNote = null;
   const activeEl = document.activeElement;
   if(tbody && activeEl && activeEl.classList && activeEl.classList.contains('comment-inp') && tbody.contains(activeEl)){
@@ -2060,7 +2061,7 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
         </select>
         ${(s==='Waiting on Supplier'||s==='Waiting on Customer') && waitingSinceLabel(r.idx) ? `<div class="wait-since">⏳ waiting ${waitingSinceLabel(r.idx)}</div>` : ''}
       </td>
-      <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><button type="button" class="btn-save-note" onclick="saveNote(${r.idx},this)" title="Save this note">Save</button><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
+      <td class="col-comment"><textarea class="comment-inp" placeholder="Add note…" onblur="chgC(${r.idx},this)" title="Add a comment or note">${getC(r.idx).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><button type="button" class="btn-save-note" onclick="saveNote(${r.idx},this)" title="Save this note">Save</button><div class="comment-log">${getCL(r.idx).map(e=>`<div class="comment-by">${e}</div>`).join('')}</div></td>
     </tr>`;
   }).join('');
 
@@ -2147,16 +2148,19 @@ function chgC(idx, el){
   if(logEl) logEl.innerHTML = getCL(idx).map(e=>`<div class="comment-by">${e}</div>`).join('');
 }
 
-// Save button handler — notes only save when this is clicked, never just by
-// clicking away, so a half-written note can't get saved by accident and a
-// fully-written one never gets lost waiting for a blur that may not come.
+// Save button handler — gives an explicit, visible way to save a note.
+// Clicking away from the box also saves automatically (see the textarea's
+// onblur, and chgC below) as a safety net, so a note is never lost just
+// because someone didn't notice or use this button. Clicking the button
+// after a blur has already saved it is a harmless no-op in chgC — this
+// still confirms with a toast either way.
 function saveNote(idx, btn){
   const td = btn.closest('td');
   const el = td ? td.querySelector('.comment-inp') : null;
   if(!el) return;
-  const before = OVR_C[idx] || '';
   chgC(idx, el);
-  if(el.value.trim() !== before) showToast('📝 Note saved');
+  const val = el.value.trim();
+  if(val && OVR_C[idx] === val) showToast('📝 Note saved');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3679,10 +3683,20 @@ async function syncAndRender(){
   }
 
   renderTabBadges();
-  if(ovChanged || clChanged || dataChanged){
+  // Only a genuinely new complaint row needs the full, expensive rebuild
+  // (tears down and redraws every row — sort order and row count can change).
+  // A dropdown value changing or a note being saved does NOT need that: the
+  // row is still the same row in the same place, just with new text in it.
+  // Rebuilding the entire table for every single one of those, on every
+  // connected teammate's browser, every 10 seconds, is what was causing the
+  // lag around dropdown updates — patch the values in place instead.
+  if(dataChanged){
     renderTab(currentTab);
     if(clChanged) showToast('↓ Team updates received');
-    if(dataChanged) showToast('🆕 New complaint(s) loaded');
+    showToast('🆕 New complaint(s) loaded');
+  } else if(ovChanged || clChanged){
+    refreshOverridesInDOM();
+    if(clChanged) showToast('↓ Team updates received');
   } else {
     refreshOverridesInDOM();
   }
