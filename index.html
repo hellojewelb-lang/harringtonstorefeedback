@@ -1435,22 +1435,46 @@ async function _flushWrites(){
 // or the grace window expires (so a legitimate concurrent edit by someone
 // else eventually wins instead of being shut out forever).
 const PENDING_WRITE_GRACE_MS = 5 * 60 * 1000; // a little above typical publish-to-web lag
+// This shield used to be in-memory only — it reset to empty on every page
+// reload. The publish-to-web snapshot it protects against can lag several
+// MINUTES behind a save, so anyone who saved a note and then reloaded the
+// page (or just reopened the tab) within that window lost the shield right
+// when it mattered most: the very next sheet read would look stale, and
+// with no shield left to say "ignore that, we just wrote something newer,"
+// the reconcile would revert the note straight back to its old value. That
+// was the actual cause of notes "not staying in the box." Persisting this
+// to localStorage means the shield survives a reload and keeps protecting
+// a recent save until the sheet genuinely catches up or the grace window
+// passes, exactly as intended.
 let _pendingWrites = {}; // `${idx}:${field}` -> {value, ts}
+try { _pendingWrites = JSON.parse(localStorage.getItem('ams_pw') || '{}'); } catch(e){}
+// Drop anything already past its grace window from a previous session so a
+// long-stale entry can't linger forever.
+(function pruneExpiredPendingWrites(){
+  const now = Date.now();
+  Object.keys(_pendingWrites).forEach(key=>{
+    if(now - (_pendingWrites[key]?.ts||0) > PENDING_WRITE_GRACE_MS) delete _pendingWrites[key];
+  });
+})();
+function savePendingWrites(){ try{ localStorage.setItem('ams_pw', JSON.stringify(_pendingWrites)); }catch(e){} }
 function markPendingWrite(idx, field, value){
   _pendingWrites[`${idx}:${field}`] = { value, ts: Date.now() };
+  savePendingWrites();
 }
 function applyPendingShield(fresh, field){
   const now = Date.now();
+  let prunedAny = false;
   Object.keys(_pendingWrites).forEach(key=>{
     const sep = key.lastIndexOf(':');
     const idx = Number(key.slice(0, sep));
     const f   = key.slice(sep+1);
     if(f !== field) return;
     const pw = _pendingWrites[key];
-    if(now - pw.ts > PENDING_WRITE_GRACE_MS){ delete _pendingWrites[key]; return; }
-    if(fresh[idx] === pw.value){ delete _pendingWrites[key]; return; } // sheet caught up — confirmed
+    if(now - pw.ts > PENDING_WRITE_GRACE_MS){ delete _pendingWrites[key]; prunedAny = true; return; }
+    if(fresh[idx] === pw.value){ delete _pendingWrites[key]; prunedAny = true; return; } // sheet caught up — confirmed
     fresh[idx] = pw.value; // still stale — keep our own recent write
   });
+  if(prunedAny) savePendingWrites();
 }
 
 function pushOverride(orderNumber, field, value){
@@ -2067,8 +2091,12 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
       return va<vb?-dir:va>vb?dir:0;
     });
   } else {
+    // Default sort tiers: Urgent first (existing behaviour), then anything
+    // "Waiting on Customer" so those don't quietly slide down the list and
+    // get forgotten, then everything else — newest first within each tier.
+    const sortTier = r => isUrgent(r.idx) ? 0 : (getS(r.idx)==='Waiting on Customer' ? 1 : 2);
     sorted = [...rows].sort((a,b)=>{
-      const pa=isUrgent(a.idx)?0:1, pb=isUrgent(b.idx)?0:1;
+      const pa=sortTier(a), pb=sortTier(b);
       if(pa!==pb) return pa-pb;
       return b.date.localeCompare(a.date);
     });
