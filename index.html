@@ -2093,8 +2093,16 @@ function renderRows(rows, tbodyId, showDate, metaId, emptyId, tab){
   } else {
     // Default sort tiers: Urgent first (existing behaviour), then anything
     // "Waiting on Customer" so those don't quietly slide down the list and
-    // get forgotten, then everything else — newest first within each tier.
-    const sortTier = r => isUrgent(r.idx) ? 0 : (getS(r.idx)==='Waiting on Customer' ? 1 : 2);
+    // get forgotten, then everything else, and Resolved last of all — once
+    // something's done there's no reason for it to compete for top billing
+    // with items that still need action. Newest first within each tier.
+    const sortTier = r => {
+      if(isUrgent(r.idx)) return 0;
+      const s = getS(r.idx);
+      if(s === 'Waiting on Customer') return 1;
+      if(s === 'Resolved') return 3;
+      return 2;
+    };
     sorted = [...rows].sort((a,b)=>{
       const pa=sortTier(a), pb=sortTier(b);
       if(pa!==pb) return pa-pb;
@@ -2190,6 +2198,7 @@ function chgS(idx, sel){
   if(par) par.classList.toggle('row-resolved', sel.value==='Resolved');
   renderTabBadges();
   renderSidebarDebounced();
+  resortDebounced();
 }
 function chgA(idx, sel){
   OVR_A[idx] = sel.value;
@@ -2202,6 +2211,7 @@ function chgA(idx, sel){
   if(par) par.classList.toggle('row-urg', sel.value==='URGENT');
   renderTabBadges();
   renderSidebarDebounced();
+  resortDebounced();
 }
 function chgDept(idx, sel){
   OVR_D[idx] = sel.value;
@@ -2918,6 +2928,20 @@ let _sidebarDebounceTimer = null;
 function renderSidebarDebounced(){
   clearTimeout(_sidebarDebounceTimer);
   _sidebarDebounceTimer = setTimeout(refreshSidebarCountsOnly, 400);
+}
+
+// A Status or Action change (unlike Priority/Dept) can move a row between
+// default-sort tiers — marking something Resolved should sink it to the
+// bottom, marking something Waiting on Customer should float it up, etc.
+// The lightweight in-place patches elsewhere intentionally don't reorder
+// rows (that's what fixed the earlier dropdown lag), so without this a
+// row just sits wherever it physically was in the DOM, greyed out but
+// still up top — debounced so clicking through several rows in a row only
+// costs one real re-sort, not one per click.
+let _resortDebounceTimer = null;
+function resortDebounced(){
+  clearTimeout(_resortDebounceTimer);
+  _resortDebounceTimer = setTimeout(()=>renderTab(currentTab), 500);
 }
 let _srchDebounceTimer = null;
 function srchDebounced(fn){
