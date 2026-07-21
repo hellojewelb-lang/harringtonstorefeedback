@@ -1644,7 +1644,7 @@ function applyChangeLogRows(rows){
 
   const byIdx = {};
   const statusSince = {}; // idx -> latest ISO timestamp where Field === 'Status'
-  let noteHistChanged = false;
+  const noteHistByIdx = {}; // idx -> array of {text, who, dateStr, ts} — Comment field only, this poll's full set
   rows.forEach(row=>{
     const ts  = String(row['Timestamp']   || '').trim();
     const who = String(row['Username']    || '').trim();
@@ -1667,9 +1667,14 @@ function applyChangeLogRows(rows){
 
     // Comment (note) saves get tracked in their own per-save history — the
     // note box's "last 2 history" — never mixed with Status/Action/Dept
-    // activity, and never collapsed to one entry per person.
+    // activity, and never collapsed to one entry per person. Collected here
+    // and reconciled AFTER this loop (see below) — not added incrementally
+    // row-by-row, which used to cause an endless-loop bug (see comment there).
     if(fld === 'Comment'){
-      if(val && addNoteHistEntry(idx, { text: val, who, dateStr, ts })) noteHistChanged = true;
+      if(val){
+        if(!noteHistByIdx[idx]) noteHistByIdx[idx] = [];
+        noteHistByIdx[idx].push({text: val, who, dateStr, ts});
+      }
       return;
     }
 
@@ -1678,6 +1683,42 @@ function applyChangeLogRows(rows){
 
     if(!byIdx[idx]) byIdx[idx] = [];
     byIdx[idx].push({ts, label});
+  });
+
+  // Reconcile note history deterministically: rebuild each row's list FRESH
+  // from this poll's complete Change Log data and only flag a change if the
+  // result actually differs from what's already stored — mirrors exactly how
+  // OVR_ACTIVITY below already works. This used to be done incrementally
+  // (add-if-new, then cap at 10 with .slice(-10)) which was NOT idempotent:
+  // every poll re-fetches the ENTIRE Change Log from scratch (not just what's
+  // new), so any row with more than 10 accumulated note saves would have an
+  // older entry trimmed away one poll, look "new" again the next poll when
+  // re-scanned, get re-added, get re-trimmed — forever. That perpetual
+  // "something changed" signal was firing the "Team updates received" toast
+  // and forcing extra redraws on EVERY single 10-second check, indefinitely
+  // — the real cause behind the still-there dropdown lag.
+  let noteHistChanged = false;
+  Object.keys(noteHistByIdx).forEach(idx=>{
+    const remoteSorted = noteHistByIdx[idx]
+      .sort((a,b)=> String(a.ts||'').localeCompare(String(b.ts||'')))
+      .slice(-8);
+    const prev = OVR_NOTE_HIST[idx] || [];
+    // Keep any very recent LOCAL-only entries (our own just-made save that
+    // the Change Log hasn't caught up with yet — typical publish lag) so it
+    // doesn't flicker away and reappear once the poll catches up.
+    const now = Date.now();
+    const stillPending = prev.filter(e =>
+      !remoteSorted.some(r => r.text === e.text && r.who === e.who) &&
+      (now - new Date(e.ts || 0).getTime()) < 5*60*1000
+    );
+    const merged = remoteSorted.concat(stillPending)
+      .sort((a,b)=> String(a.ts||'').localeCompare(String(b.ts||'')))
+      .slice(-8);
+    if(JSON.stringify(prev) !== JSON.stringify(merged)){
+      OVR_NOTE_HIST[idx] = merged;
+      noteHistChanged = true;
+      saveNH();
+    }
   });
 
   // Sort oldest→newest, keep last 6 per order, detect changes
@@ -2817,11 +2858,38 @@ function renderTab(tab){
 // set already on screen (cheap), not rebuild the whole table + charts from
 // scratch (renderTab — expensive, and was the actual cause of dropdowns
 // feeling laggy: it ran 400ms after every single dropdown change).
-function renderSidebarForCurrent(){ renderSidebar(_lastSidebarRows, _lastSidebarLabel); }
+//
+// One more step: a P/S/A/D dropdown edit can never change a complaint's
+// category or issue text — only its status/action/dept/priority. That means
+// the drivers list and word cloud (both built purely from category/issue
+// text) never have anything new to show after a dropdown edit either, yet
+// renderSidebar() was regenerating them anyway on every single click — a
+// full text-tokenizing frequency pass over every row, easily the single most
+// expensive thing happening on each edit. refreshSidebarCountsOnly() updates
+// just the numbers that CAN change (urgent/attention/department totals) and
+// leaves the drivers list / word cloud alone; the full renderSidebar (with
+// those included) still runs whenever the row SET itself changes — new tab,
+// new period, new complaint data.
+function refreshSidebarCountsOnly(){
+  const rows = _lastSidebarRows;
+  const total = rows.length;
+  const urg   = rows.filter(r=>isUrgent(r.idx)).length;
+  const attn  = rows.filter(r=>needsAttn(r.idx)).length;
+  const bd    = {'Store Manager':0,'CS':0,'Supply Chain':0,'PayPal':0};
+  rows.forEach(r=>{ const d=getD(r.idx); if(bd[d]!==undefined) bd[d]++; });
+  const elT = document.getElementById('sTotal'); if(elT) elT.textContent = total;
+  const elU = document.getElementById('sUrg');   if(elU) elU.textContent = urg;
+  const elA = document.getElementById('sAttn');  if(elA) elA.textContent = attn;
+  const elSM = document.getElementById('dSM'); if(elSM) elSM.textContent = bd['Store Manager'];
+  const elCS = document.getElementById('dCS'); if(elCS) elCS.textContent = bd['CS'];
+  const elSC = document.getElementById('dSC'); if(elSC) elSC.textContent = bd['Supply Chain'];
+  const elPP = document.getElementById('dPP'); if(elPP) elPP.textContent = bd['PayPal'];
+}
+function renderSidebarForCurrent(){ refreshSidebarCountsOnly(); }
 let _sidebarDebounceTimer = null;
 function renderSidebarDebounced(){
   clearTimeout(_sidebarDebounceTimer);
-  _sidebarDebounceTimer = setTimeout(()=>renderSidebar(_lastSidebarRows, _lastSidebarLabel), 400);
+  _sidebarDebounceTimer = setTimeout(refreshSidebarCountsOnly, 400);
 }
 let _srchDebounceTimer = null;
 function srchDebounced(fn){
@@ -3300,17 +3368,24 @@ function renderTabBadges(){
   const dailyRows   = data.filter(r=>r.date>=dailyStart&&r.date<=dailyEnd);
   const weeks       = getWeeks(weekCount);
   const weeklyRows  = data.filter(r=>r.date>=weeks[0].start&&r.date<=weeks[weeks.length-1].end);
-  const monthlyRows = data;
 
-  const sets = {today:todayRows, daily:dailyRows, weekly:weeklyRows, monthly:monthlyRows, all:data};
+  // 'monthly' and 'all' are both just the full dataset — compute its urgent
+  // count ONCE and reuse it for both plus the header pill, instead of
+  // running isUrgent() over every single row three separate times.
+  const allUrg = data.filter(r=>isUrgent(r.idx)).length;
+  const sets = {
+    today:   {rows: todayRows,  urg: todayRows.filter(r=>isUrgent(r.idx)).length},
+    daily:   {rows: dailyRows,  urg: dailyRows.filter(r=>isUrgent(r.idx)).length},
+    weekly:  {rows: weeklyRows, urg: weeklyRows.filter(r=>isUrgent(r.idx)).length},
+    monthly: {rows: data, urg: allUrg},
+    all:     {rows: data, urg: allUrg},
+  };
   ['today','daily','weekly','monthly','all'].forEach(t=>{
-    const rows = sets[t];
-    const urg  = rows.filter(r=>isUrgent(r.idx)).length;
+    const {rows, urg} = sets[t];
     document.getElementById('bdg-'+t).textContent  = rows.length;
     document.getElementById('dot-'+t).style.display = urg?'block':'none';
   });
 
-  const allUrg = data.filter(r=>isUrgent(r.idx)).length;
   const pill   = document.getElementById('hdrPill');
   document.getElementById('hdrPillN').textContent = allUrg;
   pill.style.display = allUrg ? 'flex' : 'none';
