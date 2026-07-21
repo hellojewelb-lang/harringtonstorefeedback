@@ -1630,6 +1630,16 @@ function applyChangeLogRows(rows){
     o2i[k] = i;
     o2i[k.replace(/^#/,'')] = i;
     o2i['#'+k.replace(/^#/,'')] = i;
+    // Orders with MORE THAN ONE complaint row (routed to more than one
+    // department — see project routing rules) get saved under a
+    // disambiguated "order@timestamp" key, not the bare order number (see
+    // ovKey()). Without registering that exact key here too, every Change
+    // Log entry for such an order collapses onto whichever one of its rows
+    // happens to come last in this loop — showing an empty note box with a
+    // DIFFERENT row's history underneath it, on any row that shares the
+    // order number but isn't the one actually being edited.
+    const dk = ovKey(r);
+    if(dk && dk !== k) o2i[dk] = i;
   });
 
   const byIdx = {};
@@ -1916,7 +1926,14 @@ function applyFilters(rows, tab){
 // ═══════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════
+// Remembers whatever row-set/label was last drawn into the sidebar, so a
+// dropdown change can refresh just the sidebar's numbers (see
+// renderSidebarForCurrent/renderSidebarDebounced below) without needing to
+// know which tab/filter is active or re-derive its row-set from scratch.
+let _lastSidebarRows = [], _lastSidebarLabel = '';
 function renderSidebar(rows, periodLabel){
+  _lastSidebarRows = rows;
+  _lastSidebarLabel = periodLabel;
   const total = rows.length;
   const urg   = rows.filter(r=>isUrgent(r.idx)).length;
   // Resolved or emailed orders are handled — exclude from Action Required
@@ -2793,11 +2810,18 @@ function renderTab(tab){
   else if(tab==='trends') renderTab_trends();
 }
 
-function renderSidebarForCurrent(){ renderTab(currentTab); }
+// A dropdown value changing (Priority/Status/Action/Dept) never changes
+// WHICH rows belong to the currently-viewed period — only their stats
+// (urgent count, department breakdown, top categories). So refreshing the
+// sidebar after one just needs to recompute those stats over the SAME row
+// set already on screen (cheap), not rebuild the whole table + charts from
+// scratch (renderTab — expensive, and was the actual cause of dropdowns
+// feeling laggy: it ran 400ms after every single dropdown change).
+function renderSidebarForCurrent(){ renderSidebar(_lastSidebarRows, _lastSidebarLabel); }
 let _sidebarDebounceTimer = null;
 function renderSidebarDebounced(){
   clearTimeout(_sidebarDebounceTimer);
-  _sidebarDebounceTimer = setTimeout(()=>renderTab(currentTab), 400);
+  _sidebarDebounceTimer = setTimeout(()=>renderSidebar(_lastSidebarRows, _lastSidebarLabel), 400);
 }
 let _srchDebounceTimer = null;
 function srchDebounced(fn){
@@ -3573,10 +3597,26 @@ function closeEmailModal(){
   _emailIdx = null;
 }
 
+// Swaps a row's ✉️ Email / ✓ Emailed button in place — used instead of a
+// full table rebuild (renderSidebarForCurrent no longer does one; see above).
+function updateEmailButtonInDOM(idx){
+  const r = raw[idx];
+  if(!r) return;
+  const emailedStamp = OVR_E[ovKey(r)] || '';
+  document.querySelectorAll(`tr[data-idx="${idx}"] .email-btn`).forEach(btn=>{
+    if(emailedStamp){
+      btn.outerHTML = `<button class="email-btn email-btn-done" onclick="unmarkEmailed(${idx})" title="Emailed ${emailedStamp} · Click to unmark">✓ Emailed</button>`;
+    } else {
+      btn.outerHTML = `<button class="email-btn" onclick="openEmailModal(${idx})">✉️ Email</button>`;
+    }
+  });
+}
+
 function markEmailed(){
   if(_emailIdx === null) return;
   const r = raw[_emailIdx];
   if(!r) return;
+  const idx = _emailIdx;
   const orderKey = ovKey(r);
   // Netherlands timestamp
   const ts = new Date().toLocaleString('nl-NL',{timeZone:'Europe/Amsterdam',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -3584,7 +3624,8 @@ function markEmailed(){
   saveE();
   pushOverride(orderKey, 'Emailed', ts);
   closeEmailModal();
-  renderSidebarForCurrent(); // refresh counts + buttons immediately
+  updateEmailButtonInDOM(idx);
+  renderSidebarForCurrent(); // refresh counts — cheap now, patches sidebar only
 }
 
 function copyEmailMessage(){
@@ -3614,6 +3655,7 @@ function unmarkEmailed(idx){
   delete OVR_E[orderKey];
   saveE();
   pushOverride(orderKey, 'Emailed', ''); // clears it in Apps Script
+  updateEmailButtonInDOM(idx);
   renderSidebarForCurrent();
 }
 
