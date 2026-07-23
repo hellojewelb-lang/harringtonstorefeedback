@@ -1573,6 +1573,23 @@ function applyOverrideRows(rows){
     if(!k.startsWith('-@')){
       orderToIdx[k.replace(/^#/,'')] = i;
       orderToIdx['#'+k.replace(/^#/,'')] = i;
+      // A saved note/status/etc. for THIS order can have been written back
+      // when it only had one complaint on record — under the plain order
+      // number, not the "order@timestamp" form ovKey() switches to once a
+      // second complaint arrives for the same order. Once that switch
+      // happens, the plain-number key stops pointing anywhere above, and
+      // whatever was saved under it goes silently invisible — the box
+      // reads back empty even though something real was written. Register
+      // the plain order number too (first row for that order claims it, so
+      // an old ambiguous save prefers the earliest/original complaint) so
+      // it's never simply lost once a follow-up complaint shows up.
+      const bare = String(r?.order||'').trim();
+      if(bare && bare !== '-'){
+        const bareNoHash = bare.replace(/^#/,'');
+        if(!(bare in orderToIdx))        orderToIdx[bare] = i;
+        if(!(bareNoHash in orderToIdx))  orderToIdx[bareNoHash] = i;
+        if(!(('#'+bareNoHash) in orderToIdx)) orderToIdx['#'+bareNoHash] = i;
+      }
     }
   });
 
@@ -1646,14 +1663,20 @@ function applyChangeLogRows(rows){
   const isOverrideData = sample.hasOwnProperty('OrderNumber') && !sample.hasOwnProperty('Timestamp');
   if(isOverrideData || !isRealLog) return false; // wrong data source
 
-  // Build order number → idx map (handles "#11519" and "11519" formats)
+  // Build order number → idx map (handles "#11519" and "11519" formats).
+  // Bare-number keys use "first row for this order wins" (see below) so an
+  // old, pre-disambiguation entry consistently resolves to the SAME row
+  // here as it does in applyOverrideRows — otherwise the same old note
+  // could show under one row via the sheet and a different sibling row via
+  // the Change Log, which is its own kind of confusing.
   const o2i = {};
   raw.forEach((r,i)=>{
     if(!r.order) return;
     const k = String(r.order).trim();
-    o2i[k] = i;
-    o2i[k.replace(/^#/,'')] = i;
-    o2i['#'+k.replace(/^#/,'')] = i;
+    const kNoHash = k.replace(/^#/,'');
+    if(!(k in o2i))               o2i[k] = i;
+    if(!(kNoHash in o2i))         o2i[kNoHash] = i;
+    if(!(('#'+kNoHash) in o2i))   o2i['#'+kNoHash] = i;
     // Orders with MORE THAN ONE complaint row (routed to more than one
     // department — see project routing rules) get saved under a
     // disambiguated "order@timestamp" key, not the bare order number (see
@@ -1661,7 +1684,8 @@ function applyChangeLogRows(rows){
     // Log entry for such an order collapses onto whichever one of its rows
     // happens to come last in this loop — showing an empty note box with a
     // DIFFERENT row's history underneath it, on any row that shares the
-    // order number but isn't the one actually being edited.
+    // order number but isn't the one actually being edited. This one's
+    // always unique per row, so no first-wins guard needed.
     const dk = ovKey(r);
     if(dk && dk !== k) o2i[dk] = i;
   });
