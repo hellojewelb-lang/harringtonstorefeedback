@@ -1372,6 +1372,32 @@ function renderBulkBar(){
 const _writeQ = [];
 let _writeBusy = false;
 const WRITE_MAX_RETRIES = 5;
+// Items currently waiting out a backoff timer (setTimeout) before their next
+// retry attempt. Not in _writeQ during the wait, but still "outstanding" —
+// included in what we persist so a closed tab doesn't lose them.
+let _backoffWaiting = [];
+
+// This queue used to be in-memory only. If a write failed and got scheduled
+// for a retry (setTimeout with backoff), and the tab was closed/reloaded
+// before that timer fired, the retry — and the write itself — vanished
+// silently. Nothing ever told the user, because the failure banner only
+// shows after all retries are exhausted *within the same live session*.
+// That is exactly what happened to a teammate who marked something Resolved
+// with a comment one night: the save queued, likely hit a hiccup, was
+// waiting to retry, the tab closed for the night, and the retry never got
+// a chance to run — so the sheet never actually got the update, and the
+// next day's poll showed the true (unwritten) old status again.
+// Persisting the queue means a write is never lost just because the tab
+// closed — it resumes and finishes on the next page load instead.
+function saveWriteQueue(){
+  try{ localStorage.setItem('ams_wq', JSON.stringify(_writeQ.concat(_backoffWaiting))); }catch(e){}
+}
+(function restoreWriteQueue(){
+  try{
+    const restored = JSON.parse(localStorage.getItem('ams_wq') || '[]');
+    if(Array.isArray(restored)) restored.forEach(item=>{ if(item && item.url) _writeQ.push(item); });
+  } catch(e){}
+})();
 
 function showSyncFailureBanner(field, errMsg){
   let bar = document.getElementById('syncFailBanner');
@@ -1388,6 +1414,11 @@ async function _flushWrites(){
   if(_writeBusy || !_writeQ.length) return;
   _writeBusy = true;
   while(_writeQ.length){
+    // Intentionally NOT persisting right after this shift(): localStorage
+    // still shows this item as pending (from the last save, before this
+    // attempt started). If the tab closes while the fetch below is in
+    // flight, the item is still there to resume on the next page load —
+    // it only gets removed from storage once we know the real outcome.
     const item = _writeQ.shift();
     const {url, field} = item;
     const retries = item.retries || 0;
@@ -1411,16 +1442,32 @@ async function _flushWrites(){
       if(retries < WRITE_MAX_RETRIES){
         setSyncStatus(`retrying save (${field}, attempt ${retries+1})…`, false);
         const backoff = Math.min(30000, 1000 * Math.pow(2, retries)); // 1s,2s,4s,8s,16s,30s(cap)
-        setTimeout(()=>{ _writeQ.push({...item, retries: retries+1}); _flushWrites(); }, backoff);
+        const retryItem = {...item, retries: retries+1};
+        _backoffWaiting.push(retryItem);
+        saveWriteQueue(); // persist: item is now "waiting to retry" — still outstanding
+        setTimeout(()=>{
+          _backoffWaiting = _backoffWaiting.filter(x=>x!==retryItem);
+          _writeQ.push(retryItem);
+          saveWriteQueue();
+          _flushWrites();
+        }, backoff);
       } else {
         setSyncStatus(`save failed (${field}): ${errMsg}`, false);
         showSyncFailureBanner(field, errMsg);
+        saveWriteQueue(); // persist: gave up, item removed from outstanding work
       }
+    } else {
+      saveWriteQueue(); // persist: succeeded, item removed from outstanding work
     }
     if(_writeQ.length) await new Promise(r=>setTimeout(r,400));
   }
   _writeBusy = false;
 }
+
+// Resume any writes that were still outstanding when the page last closed
+// (queued or mid-retry-wait) — this is what actually stops a save from
+// being silently lost if the tab shuts before a retry timer fires.
+if(_writeQ.length) _flushWrites();
 
 // ── Pending-write shield ────────────────────────────────────
 // loadOverrides()'s PRIMARY read is a Google "publish to web" CSV snapshot,
@@ -1487,6 +1534,7 @@ function pushOverride(orderNumber, field, value){
     + '&value='       + encodeURIComponent(value)
     + '&username='    + encodeURIComponent(username);
   _writeQ.push({url, field});
+  saveWriteQueue(); // persist immediately — outlives a tab close before this even starts sending
   const pending = _writeQ.length + (_writeBusy ? 1 : 0);
   setSyncStatus(`saving${pending > 1 ? ` (${pending})` : ''}…`, true);
   _flushWrites();
