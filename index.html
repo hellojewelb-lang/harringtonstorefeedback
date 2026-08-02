@@ -691,6 +691,11 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
       <div id="syncStatus" style="font-size:10px;color:#7dd3fc;font-weight:500">⏳ syncing…</div>
       <button onclick="syncAndRender()" title="Force sync now" style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#7dd3fc;cursor:pointer;line-height:1.4">↺</button>
     </div>
+    <!-- Visible build marker: bump APP_BUILD (below) whenever index.html changes,
+         so anyone can confirm at a glance — without relying on GitHub's commit
+         date or Finder's file date, both of which have caused confusion —
+         that the page they're looking at is actually running the latest code. -->
+    <div id="buildTag" style="font-size:9px;color:rgba(255,255,255,.4);margin-top:1px"></div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <div class="hdr-pill" id="hdrPill" style="display:none" onclick="urgentPillClick()" title="Urgent items across all time — may differ from the period you're currently viewing">⚠️ <span id="hdrPillN">0</span> Urgent <span style="opacity:.75;font-weight:600">(all-time)</span></div>
@@ -1151,6 +1156,18 @@ if(typeof Chart !== 'undefined'){
   Chart.defaults.devicePixelRatio = 1;
   Chart.defaults.animation = false;
 }
+
+// ═══════════════════════════════════════════════════════════
+// VISIBLE BUILD MARKER — bump this date string every time index.html is
+// changed and re-uploaded. Lets anyone confirm, just by looking at the
+// page, that they're on the latest version — no need to trust GitHub's
+// commit date or a file's Modified date, which have both caused confusion.
+// ═══════════════════════════════════════════════════════════
+const APP_BUILD = '2026-08-02';
+(function showBuildTag(){
+  const el = document.getElementById('buildTag');
+  if(el) el.textContent = 'Updated ' + APP_BUILD;
+})();
 
 // ═══════════════════════════════════════════════════════════
 // DATA
