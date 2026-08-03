@@ -1163,7 +1163,7 @@ if(typeof Chart !== 'undefined'){
 // page, that they're on the latest version — no need to trust GitHub's
 // commit date or a file's Modified date, which have both caused confusion.
 // ═══════════════════════════════════════════════════════════
-const APP_BUILD = '2026-08-02';
+const APP_BUILD = '2026-08-03';
 (function showBuildTag(){
   const el = document.getElementById('buildTag');
   if(el) el.textContent = 'Updated ' + APP_BUILD;
@@ -1607,12 +1607,24 @@ function ovKey(r){
   const o = String(r?.order||'').trim();
   const t = String(r?.dateTime || r?.date || '').trim();
   if(o && o !== '-'){
-    // Only disambiguate with a timestamp when this order number actually
-    // has more than one complaint row — keeps the key unchanged (bare
-    // order number) for the common single-complaint case, so existing
-    // saved overrides for those orders keep matching and don't reset.
-    if((ORDER_ROW_COUNTS[o]||0) > 1 && t) return o + '@' + t;
-    return o;
+    // Always disambiguate with this row's own timestamp when one is
+    // available — never conditional on whether this order *currently* has
+    // more than one complaint row. That row count isn't stable: a second
+    // complaint on the same order number can arrive at any time AFTER an
+    // edit was already saved under the bare order number, which silently
+    // changes what THIS SAME ROW's key computes to on the very next poll —
+    // orphaning the earlier save. That was the root cause behind notes
+    // going invisible (multi-row orphan bug) and, separately, a Status
+    // change reverting overnight the moment a second complaint appeared
+    // for that order. Keying on order+timestamp unconditionally means a
+    // row's key is fixed for life the moment it's first seen, regardless
+    // of anything that happens to sibling rows later — same order, same
+    // time, same key, forever, on every device. (Legacy rows saved before
+    // this change, under the old bare-number scheme, are still found via
+    // the bare-key fallback registered below in applyOverrideRows/
+    // applyChangeLogRows — this only changes the key used for NEW writes.)
+    if(t) return o + '@' + t;
+    return o; // no timestamp on this row at all — nothing to disambiguate with
   }
   // Use the full timestamp (dateTime), not the day-only `date`, so two
   // different no-order complaints submitted on the same calendar day get
