@@ -1163,7 +1163,7 @@ if(typeof Chart !== 'undefined'){
 // page, that they're on the latest version — no need to trust GitHub's
 // commit date or a file's Modified date, which have both caused confusion.
 // ═══════════════════════════════════════════════════════════
-const APP_BUILD = '2026-08-03';
+const APP_BUILD = '2026-08-03b';
 (function showBuildTag(){
   const el = document.getElementById('buildTag');
   if(el) el.textContent = 'Updated ' + APP_BUILD;
@@ -1488,22 +1488,35 @@ if(_writeQ.length) _flushWrites();
 
 // ── Pending-write shield ────────────────────────────────────
 // loadOverrides()'s PRIMARY read is a Google "publish to web" CSV snapshot,
-// which can lag several minutes behind a write that already succeeded via
-// Apps Script (the fallback/write path is always live; the published CSV
-// is a cache). Without this, a poll landing in that lag window reads the
-// stale snapshot and applyOverrideRows()'s full reconcile stomps a just-made
-// local edit straight back to the old value — it looks like the edit
-// "didn't take," so people redo it, sometimes several times in a row.
+// which is a CACHE, not a live read — the actual write (via Apps Script)
+// always lands immediately, but this snapshot only catches up whenever
+// Google next refreshes it. Without this shield, a poll landing before that
+// catch-up reads the stale snapshot and applyOverrideRows()'s full reconcile
+// stomps a just-made local edit straight back to the old value — it looks
+// like the edit "didn't take."
 // We remember our own recent local writes and prefer them over a
 // still-stale read until the read actually catches up (matches our value)
 // or the grace window expires (so a legitimate concurrent edit by someone
 // else eventually wins instead of being shut out forever).
-const PENDING_WRITE_GRACE_MS = 5 * 60 * 1000; // a little above typical publish-to-web lag
+//
+// This window used to be 5 minutes, based on a guess that publish-to-web
+// lag was "a few minutes." That guess was wrong: this exact spreadsheet's
+// publish-to-web feed has been observed lagging by upwards of 36+ hours
+// (a different sync task against this same account found the published
+// feed running about 1.5 DAYS behind actual sheet content). A 5-minute
+// shield is nowhere near enough headroom for that — it was expiring and
+// handing control back to a snapshot that hadn't caught up in over a day,
+// which is exactly what made a Status change marked Resolved at night look
+// reverted to pending again the next morning: the shield gave up hours
+// before the snapshot ever had a chance to confirm it. Extending this to a
+// week gives real publish-to-web lag enough room to actually catch up
+// before we ever stop trusting our own confirmed-successful write.
+const PENDING_WRITE_GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — see above
 // This shield used to be in-memory only — it reset to empty on every page
-// reload. The publish-to-web snapshot it protects against can lag several
-// MINUTES behind a save, so anyone who saved a note and then reloaded the
-// page (or just reopened the tab) within that window lost the shield right
-// when it mattered most: the very next sheet read would look stale, and
+// reload. The publish-to-web snapshot it protects against can lag well over
+// a day behind a save (see above), so anyone who saved a note and then
+// reloaded the page (or just reopened the tab) within that window lost the
+// shield right when it mattered most: the very next sheet read would look stale, and
 // with no shield left to say "ignore that, we just wrote something newer,"
 // the reconcile would revert the note straight back to its old value. That
 // was the actual cause of notes "not staying in the box." Persisting this
