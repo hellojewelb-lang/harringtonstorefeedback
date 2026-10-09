@@ -1147,6 +1147,31 @@ table thead th{background:#f0f2fa;font-size:11px;font-weight:700;color:#6b7280;t
 
 <script>
 // ═══════════════════════════════════════════════════════════
+// LITE MODE — for computers that struggle with the full dashboard.
+// Turn on by opening the dashboard link with  ?lite=1  at the end (it is
+// then remembered on that browser); turn off with  ?lite=0 . In lite mode:
+// no charts are drawn, all animations/blur/shadows are switched off, and
+// the background refresh runs every 30s instead of 10s. All data, tables,
+// notes and saving work exactly the same. Other users are unaffected.
+// ═══════════════════════════════════════════════════════════
+const LITE = (()=>{
+  try{
+    const q = new URLSearchParams(location.search).get('lite');
+    if(q==='1') localStorage.setItem('ams_lite','1');
+    if(q==='0') localStorage.removeItem('ams_lite');
+    return localStorage.getItem('ams_lite')==='1';
+  }catch(e){ return new URLSearchParams(location.search).get('lite')==='1'; }
+})();
+if(LITE){
+  // Swap Chart.js for a do-nothing stand-in so no canvas is ever drawn.
+  window.Chart = class { constructor(){} destroy(){} resize(){} update(){} };
+  window.Chart.defaults = {};
+  const st = document.createElement('style');
+  st.textContent = '*{animation:none!important;transition:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;text-shadow:none!important}canvas{display:none!important}';
+  document.head.appendChild(st);
+}
+
+// ═══════════════════════════════════════════════════════════
 // CHART.JS GLOBAL DEFAULTS — set before any chart is created
 // Limits canvas resolution to 1× (saves ~75% canvas RAM on Retina/iPad)
 // and disables animations (eliminates multi-repaint CPU cost).
@@ -1163,10 +1188,10 @@ if(typeof Chart !== 'undefined'){
 // page, that they're on the latest version — no need to trust GitHub's
 // commit date or a file's Modified date, which have both caused confusion.
 // ═══════════════════════════════════════════════════════════
-const APP_BUILD = '2026-10-09';
+const APP_BUILD = '2026-10-09b';
 (function showBuildTag(){
   const el = document.getElementById('buildTag');
-  if(el) el.textContent = 'Updated ' + APP_BUILD;
+  if(el) el.textContent = 'Updated ' + APP_BUILD + (LITE ? ' · Lite mode' : '');
 })();
 
 // ═══════════════════════════════════════════════════════════
@@ -3989,7 +4014,7 @@ async function syncAndRender(){
 // Skip the background poll while the tab is hidden / screen asleep — nothing
 // is visible to update, and a catch-up sync runs when the tab comes back
 // (see visibilitychange below).
-setInterval(()=>{ if(!document.hidden) syncAndRender(); }, 10000);
+setInterval(()=>{ if(!document.hidden) syncAndRender(); }, LITE ? 30000 : 10000);
 
 // ── Staleness watchdog ────────────────────────────────────────
 // If this browser hasn't managed a successful override sync in over a
