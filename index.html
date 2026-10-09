@@ -1170,6 +1170,16 @@ if(LITE){
   st.textContent = '*{animation:none!important;transition:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none!important;text-shadow:none!important}canvas{display:none!important}';
   document.head.appendChild(st);
 }
+// Row positions differ between the full and the Recent view, and the
+// "just saved, waiting for the sheet" shield is stored by row position — so
+// whenever this browser switches between views, drop that shield rather than
+// let it point at the wrong rows. (Writes already queued are unaffected.)
+try{
+  const _view = LITE ? 'recent' : 'full';
+  const _prev = localStorage.getItem('ams_view') || 'full'; // browsers before this change were all on the full view
+  if(_prev !== _view) localStorage.removeItem('ams_pw');
+  localStorage.setItem('ams_view', _view);
+}catch(e){}
 
 // ═══════════════════════════════════════════════════════════
 // CHART.JS GLOBAL DEFAULTS — set before any chart is created
@@ -3676,7 +3686,14 @@ function sidebarFilter(type, value) {
 // ═══════════════════════════════════════════════════════════
 // GOOGLE SHEETS DATA LOADER
 // ═══════════════════════════════════════════════════════════
-const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTOB_MFqtm-CJzEv9CS9Q5F89y10FseecQ36UmYzbjXp6jP4jVCc4aOX7Afhchpp_Tii5_wXUXeciT8/pub?gid=38573154&single=true&output=csv';
+// Lite mode reads the small "Recent" tab (newest ~400 complaints, ~90 KB)
+// instead of the full tab (all complaints, ~1.5 MB) so a struggling computer
+// has far less to download and process. Saved edits are keyed by order number
+// + timestamp, so they match the same complaints in either view. The full
+// data stays untouched in the sheet and in everyone else's normal dashboard.
+const SHEET_CSV_URL = LITE
+  ? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTOB_MFqtm-CJzEv9CS9Q5F89y10FseecQ36UmYzbjXp6jP4jVCc4aOX7Afhchpp_Tii5_wXUXeciT8/pub?gid=1652780042&single=true&output=csv'
+  : 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTOB_MFqtm-CJzEv9CS9Q5F89y10FseecQ36UmYzbjXp6jP4jVCc4aOX7Afhchpp_Tii5_wXUXeciT8/pub?gid=38573154&single=true&output=csv';
 
 // ── ReAmaze + Shopify config ─────────────────────────────────
 const REAMAZE_SUBDOMAIN    = 'massimo-milano';
